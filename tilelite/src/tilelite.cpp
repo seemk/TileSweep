@@ -11,14 +11,8 @@
 #include <string>
 #include "tile_renderer.h"
 #include "ini/ini.h"
-
-struct tile {
-  int x;
-  int y;
-  int z;
-  int w;
-  int h;
-};
+#include "tile.h"
+#include "image.h"
 
 int64_t position_hash(int64_t z, int64_t x, int64_t y) {
   return (z << 40) | (x << 20) | y;
@@ -71,8 +65,6 @@ struct tile_request {
   socklen_t remote_addr_len;
   tile tile_dim;
 };
-
-void render_tile(tile t, image* img) { printf("render\n"); }
 
 struct tilelite {
   tile_renderer renderer;
@@ -163,20 +155,22 @@ int main(int argc, char** argv) {
 
     int64_t pos_hash = position_hash(coord.z, coord.x, coord.y);
     image img;
+    img.data = NULL;
     int fetch_res = image_db_fetch(db, pos_hash, &img);
 
     if (fetch_res == -1) {
-      printf("No tile yet\n");
-      render_tile(coord, &img);
+      const int MTU_MAX = 512;
+      render_tile(&context.renderer, &coord, &img);
+      const int bytes_to_send = img.len;
+
+      int bytes_sent = sendto(sockfd, img.data, MTU_MAX, 0,
+                              (const struct sockaddr*)&remote_addr, addr_len);
+      printf("sent %d bytes\n", bytes_sent);
     }
 
     if (img.data) {
       free(img.data);
     }
-
-    int bytes_sent = sendto(sockfd, buf, numbytes, 0,
-                            (const struct sockaddr*)&remote_addr, addr_len);
-    printf("sent %d bytes\n", bytes_sent);
   }
 
   close(sockfd);

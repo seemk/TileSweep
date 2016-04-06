@@ -12,6 +12,11 @@ query = string.format("%d,%d,%d,%d,%d", ngx.var.z, ngx.var.x, ngx.var.y, w, h)
 ngx.say(query)
 ok, err = sock:send(query)
 
-local data, err = sock:receive()
-ngx.say(data)
+sock:settimeout(1000)
+while true do
+  local data, err = sock:receive()
+  if not data then break end
+
+  ngx.say("received data");
+end
 sock:close()

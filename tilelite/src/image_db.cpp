@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "sqlite3/sqlite3.h"
+#include "image.h"
 
 image_db* image_db_open(const char* db_file) {
   sqlite3* sqlite_db = NULL;

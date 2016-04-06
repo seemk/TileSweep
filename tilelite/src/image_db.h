@@ -2,10 +2,7 @@
 
 #include <stdint.h>
 
-struct image {
-  int len;
-  uint8_t* data;
-};
+struct image;
 struct sqlite3;
 struct sqlite3_stmt;
 

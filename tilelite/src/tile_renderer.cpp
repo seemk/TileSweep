@@ -9,6 +9,9 @@
 #include "tile.h"
 #include "image.h"
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb/stb_image_write.h"
+
 const double PI = 3.14159265358979323846;
 
 struct latlon {
@@ -59,12 +62,14 @@ bool render_tile(tile_renderer* renderer, const tile* tile, image* image) {
   mapnik::box2d<double> bbox(p1.longitude, p1.latitude, p2.longitude, p2.latitude);
   renderer->map->zoom_to_box(bbox);
 
-  // TODO: PNG
-  image->len = 256 * 256 * 4;
-  image->data = (uint8_t*)calloc(1, 256 * 256 * 4);
-  mapnik::image_rgba8 buf(256, 256, image->data);
+  mapnik::image_rgba8 buf(256, 256);
   mapnik::agg_renderer<mapnik::image_rgba8> ren(*renderer->map, buf);
   ren.apply();
 
+  printf("pitch %u\n", buf.row_size());
+  image->data = stbi_write_png_to_mem(buf.bytes(), buf.row_size(), 256, 256, 4, &image->len);
+
+  printf("PNG len: %d\n", image->len);
+  
   return true;
 }

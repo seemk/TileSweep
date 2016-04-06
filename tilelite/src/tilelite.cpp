@@ -162,10 +162,24 @@ int main(int argc, char** argv) {
       const int MTU_MAX = 512;
       render_tile(&context.renderer, &coord, &img);
       const int bytes_to_send = img.len;
+      int bytes_left = bytes_to_send;
 
-      int bytes_sent = sendto(sockfd, img.data, MTU_MAX, 0,
-                              (const struct sockaddr*)&remote_addr, addr_len);
-      printf("sent %d bytes\n", bytes_sent);
+      printf("bytes to send: %d\n", bytes_to_send);
+      int offset = 0;
+      while (bytes_left > 0) {
+        int frame_bytes = bytes_left > MTU_MAX ? MTU_MAX : bytes_left;
+        printf("frame bytes: %d\n", frame_bytes);
+        int bytes_sent = sendto(sockfd, img.data + offset, frame_bytes, 0,
+                                (const struct sockaddr*)&remote_addr, addr_len);
+        if (bytes_sent <= 0) {
+          printf("failed to send data\n");
+          break;
+        }
+
+        bytes_left -= bytes_sent;
+        offset += bytes_sent;
+        printf("sent %d bytes\n", bytes_sent);
+      }
     }
 
     if (img.data) {

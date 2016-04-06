@@ -8,7 +8,6 @@ struct tile_renderer {
   mapnik::Map* map;
 };
 
-void register_plugins(const char* plugins_path);
-void register_fonts(const char* fonts_path);
-
-int tile_renderer_init(tile_renderer* renderer, const char* mapnik_xml_path);
+bool register_plugins(const char* plugins_path);
+bool register_fonts(const char* fonts_path);
+bool tile_renderer_init(tile_renderer* renderer, const char* mapnik_xml_path);

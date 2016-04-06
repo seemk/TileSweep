@@ -35,7 +35,7 @@ int atoi_len(const char* s, int len) {
 }
 
 tile parse_tile(const char* s, int len) {
-  int vals[5] = { 0 };
+  int vals[5] = {0};
   char buf[16];
   int idx = 0;
   int v_idx = 0;
@@ -72,15 +72,14 @@ struct tile_request {
   tile tile_dim;
 };
 
-void render_tile(tile t, image* img) {
-  printf("render\n");
-}
+void render_tile(tile t, image* img) { printf("render\n"); }
 
 struct tilelite {
   tile_renderer renderer;
 };
 
-int ini_parse_callback(void* user, const char* section, const char* name, const char* value) {
+int ini_parse_callback(void* user, const char* section, const char* name,
+                       const char* value) {
   tilelite* context = (tilelite*)user;
 
   if (strcmp(name, "plugins") == 0) {
@@ -90,13 +89,15 @@ int ini_parse_callback(void* user, const char* section, const char* name, const 
   } else if (strcmp(name, "mapnik_xml") == 0) {
     tile_renderer_init(&context->renderer, value);
   }
+
+  return 1;
 }
 
 int main(int argc, char** argv) {
-
   tilelite context;
 
-  if (ini_parse("conf.ini", ini_parse_callback, &context) < 0) {
+  if (ini_parse("conf.ini", ini_parse_callback, &context) < 0 ||
+      context.renderer.map == NULL) {
     fprintf(stderr, "failed load configuration file\n");
     return 1;
   }
@@ -139,9 +140,6 @@ int main(int argc, char** argv) {
   }
 
   freeaddrinfo(servinfo);
-
-  register_plugins("plugins");
-  register_fonts("fonts");
 
   image_db* db = image_db_open("image.db");
 

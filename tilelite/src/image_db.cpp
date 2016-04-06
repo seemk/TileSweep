@@ -49,12 +49,21 @@ image_db* image_db_open(const char* db_file) {
     return NULL;
   }
 
+  sqlite3_stmt* insert_position = NULL;
   res = sqlite3_prepare_v2(sqlite_db,
-      "INSERT INTO tile VALUES (?, ?)", -1, &db->
+      "INSERT INTO tile VALUES (?, ?)", -1, &insert_position, NULL);
+
+  if (res != SQLITE_OK) {
+    fprintf(stderr, "%s\n", sqlite3_errmsg(sqlite_db));
+    sqlite3_close_v2(sqlite_db);
+    return NULL;
+  }
+
 
   image_db* db = (image_db*)calloc(1, sizeof(image_db));
   db->db = sqlite_db;
   db->fetch_query = fetch_query;
+  db->insert_position = insert_position;
 
   return db;
 }

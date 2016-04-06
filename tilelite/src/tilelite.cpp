@@ -9,11 +9,13 @@
 #include <string.h>
 #include "image_db.h"
 #include <string>
+#include "tile_renderer.h"
+#include "ini/ini.h"
 
 struct tile {
-  int z;
   int x;
   int y;
+  int z;
   int w;
   int h;
 };
@@ -70,7 +72,35 @@ struct tile_request {
   tile tile_dim;
 };
 
+void render_tile(tile t, image* img) {
+  printf("render\n");
+}
+
+struct tilelite {
+  tile_renderer renderer;
+};
+
+int ini_parse_callback(void* user, const char* section, const char* name, const char* value) {
+  tilelite* context = (tilelite*)user;
+
+  if (strcmp(name, "plugins") == 0) {
+    register_plugins(value);
+  } else if (strcmp(name, "fonts") == 0) {
+    register_fonts(value);
+  } else if (strcmp(name, "mapnik_xml") == 0) {
+    tile_renderer_init(&context->renderer, value);
+  }
+}
+
 int main(int argc, char** argv) {
+
+  tilelite context;
+
+  if (ini_parse("conf.ini", ini_parse_callback, &context) < 0) {
+    fprintf(stderr, "failed load configuration file\n");
+    return 1;
+  }
+
   struct addrinfo hints, *servinfo, *p;
   struct sockaddr_storage remote_addr;
   char buf[1024];
@@ -110,6 +140,9 @@ int main(int argc, char** argv) {
 
   freeaddrinfo(servinfo);
 
+  register_plugins("plugins");
+  register_fonts("fonts");
+
   image_db* db = image_db_open("image.db");
 
   if (!db) {
@@ -133,7 +166,15 @@ int main(int argc, char** argv) {
     int64_t pos_hash = position_hash(coord.z, coord.x, coord.y);
     image img;
     int fetch_res = image_db_fetch(db, pos_hash, &img);
-    printf("%d\n", fetch_res);
+
+    if (fetch_res == -1) {
+      printf("No tile yet\n");
+      render_tile(coord, &img);
+    }
+
+    if (img.data) {
+      free(img.data);
+    }
 
     int bytes_sent = sendto(sockfd, buf, numbytes, 0,
                             (const struct sockaddr*)&remote_addr, addr_len);

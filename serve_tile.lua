@@ -14,7 +14,7 @@ local h = ngx.var.h or 256
 query = string.format("%d,%d,%d,%d,%d", ngx.var.z, ngx.var.x, ngx.var.y, w, h)
 ok, err = sock:send(query)
 
-sock:settimeout(1000)
+sock:settimeout(5000)
 local size_data, err = sock:receive(4)
 
 local b1 = string.byte(size_data, 1)

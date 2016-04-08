@@ -6,6 +6,7 @@
 #include <mapnik/agg_renderer.hpp>
 #include <mapnik/image_util.hpp>
 #include <mapnik/image.hpp>
+#include <mapnik/well_known_srs.hpp>
 #include "tile.h"
 #include "image.h"
 
@@ -30,7 +31,6 @@ bool register_fonts(const char* fonts_path) {
 
 bool tile_renderer_init(tile_renderer* renderer, const char* mapnik_xml_path) {
   renderer->map = new mapnik::Map();
-
   try {
     mapnik::load_map(*renderer->map, mapnik_xml_path);
   } catch (std::exception& e) {
@@ -56,20 +56,26 @@ latlon xyz_latlon(int x, int y, int z) {
 mapnik::box2d<double> tile_bbox(const tile* tile) {}
 
 bool render_tile(tile_renderer* renderer, const tile* tile, image* image) {
-  latlon p1 = xyz_latlon(tile->x, tile->y, tile->z);
-  latlon p2 = xyz_latlon(tile->x + 1, tile->y + 1, tile->z);
+   latlon p1 = xyz_latlon(tile->x, tile->y, tile->z);
+   latlon p2 = xyz_latlon(tile->x + 1, tile->y + 1, tile->z);
 
-  mapnik::box2d<double> bbox(p1.longitude, p1.latitude, p2.longitude, p2.latitude);
+  mapnik::lonlat2merc(&p1.longitude, &p1.latitude, 1);
+  mapnik::lonlat2merc(&p2.longitude, &p2.latitude, 1);
+
+  mapnik::box2d<double> bbox(p1.longitude, p1.latitude, p2.longitude,
+                             p2.latitude);
+  renderer->map->resize(tile->w, tile->h);
   renderer->map->zoom_to_box(bbox);
 
-  mapnik::image_rgba8 buf(256, 256);
+  mapnik::image_rgba8 buf(tile->w, tile->h);
   mapnik::agg_renderer<mapnik::image_rgba8> ren(*renderer->map, buf);
   ren.apply();
 
   printf("pitch %u\n", buf.row_size());
-  image->data = stbi_write_png_to_mem(buf.bytes(), buf.row_size(), 256, 256, 4, &image->len);
+  image->data = stbi_write_png_to_mem(buf.bytes(), buf.row_size(), tile->w, tile->h, 4,
+                                      &image->len);
 
   printf("PNG len: %d\n", image->len);
-  
+
   return true;
 }

@@ -293,7 +293,8 @@ int main(int argc, char** argv) {
             render_tile(&context.renderer, &coord, &img);
 
             // send amount of bytes
-            
+
+            printf("Got image, len: %d\n", img.len);
             send(ev->data.fd, &img.len, sizeof(int), 0);
 
             const int bytes_to_send = img.len;

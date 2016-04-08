@@ -294,7 +294,7 @@ int main(int argc, char** argv) {
 
             // send amount of bytes
             
-            send(ev->data.fd, &img.len, sizeof(int));
+            send(ev->data.fd, &img.len, sizeof(int), 0);
 
             const int bytes_to_send = img.len;
             printf("Bytes to send: %d\n", bytes_to_send);
@@ -303,7 +303,7 @@ int main(int argc, char** argv) {
 
             while (bytes_left > 0) {
               int bytes_sent = send(ev->data.fd, img.data, bytes_left, 0);
-              printf("Bytes written: %d\n", write_res);
+              printf("Bytes written: %d\n", bytes_sent);
 
               if (bytes_sent == -1) {
                 perror("send to client fail");

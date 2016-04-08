@@ -1,5 +1,6 @@
-local sock = ngx.socket.udp();
-local ok, err = sock:setpeername("127.0.0.1", 9567)
+local sock = ngx.socket.tcp();
+sock:settimeout(1000);
+local ok, err = sock:connect("127.0.0.1", 9567)
 if not ok then
   ngx.say("conn fail: ", err)
   return
@@ -9,19 +10,16 @@ local w = ngx.var.w or 256
 local h = ngx.var.h or 256
 
 query = string.format("%d,%d,%d,%d,%d", ngx.var.z, ngx.var.x, ngx.var.y, w, h)
+ngx.say("sending query");
 ok, err = sock:send(query)
 
 sock:settimeout(1000)
+local size_data, err = sock:receive(4)
 
-buf = ""
-while true do
-  local data, err = sock:receive()
-  if not data then break end
+ngx.say(size_data)
 
-  buf = buf .. data
-end
-sock:close()
+sock:setkeepalive()
 
-ngx.header["Content-Length"] = string.len(buf)
-ngx.header["Content-Type"] = "image/png"
-ngx.say(buf)
+--ngx.header["Content-Length"] = string.len(buf)
+--ngx.header["Content-Type"] = "image/png"
+--ngx.say(buf)

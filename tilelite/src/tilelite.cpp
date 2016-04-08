@@ -2,9 +2,11 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/epoll.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
 #include "image_db.h"
@@ -85,6 +87,73 @@ int ini_parse_callback(void* user, const char* section, const char* name,
   return 1;
 }
 
+int bind_tcp(const char* port) {
+  struct addrinfo hints;
+
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_flags = AI_PASSIVE;
+
+  struct addrinfo* results;
+  int rv = getaddrinfo(NULL, port, &hints, &results);
+
+  if (rv != 0) {
+    fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+    return -1;
+  }
+
+  int fd = -1;
+
+  struct addrinfo* result;
+  for (result = results; result != NULL; result = result->ai_next) {
+    fd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+    if (fd == -1) {
+      continue;
+    }
+
+    int enable = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0) {
+      fprintf(stderr, "setsockopt(SO_REUSEADDR) failed");
+    }
+
+    if (bind(fd, result->ai_addr, result->ai_addrlen) == 0) {
+      break;
+    }
+
+    close(fd);
+  }
+
+  if (result == NULL) {
+    fprintf(stderr, "failed to bind socket\n");
+    return -1;
+  }
+
+  freeaddrinfo(result);
+
+  return fd;
+}
+
+int set_nonblocking(int fd) {
+  int flags = fcntl(fd, F_GETFL, 0);
+
+  if (flags == -1) {
+    perror("get fcntl");
+    return -1;
+  }
+
+  flags |= O_NONBLOCK;
+
+  int res = fcntl(fd, F_SETFL, flags);
+
+  if (res == -1) {
+    perror("set fcntl");
+    return -1;
+  }
+
+  return 0;
+}
+
 int main(int argc, char** argv) {
   tilelite context;
 
@@ -94,45 +163,6 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  struct addrinfo hints, *servinfo, *p;
-  struct sockaddr_storage remote_addr;
-  char buf[1024];
-
-  memset(&hints, 0, sizeof(hints));
-
-  hints.ai_family = AF_INET;
-  hints.ai_socktype = SOCK_DGRAM;
-  hints.ai_flags = AI_PASSIVE;
-
-  int rv;
-  if ((rv = getaddrinfo(NULL, "9567", &hints, &servinfo)) != 0) {
-    fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
-    return 1;
-  }
-
-  int sockfd;
-  for (p = servinfo; p != NULL; p = p->ai_next) {
-    if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
-      printf("socket fail\n");
-      continue;
-    }
-
-    if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
-      close(sockfd);
-      printf("bind fail\n");
-      continue;
-    }
-
-    break;
-  }
-
-  if (p == NULL) {
-    fprintf(stderr, "failed to bind socket");
-    return 1;
-  }
-
-  freeaddrinfo(servinfo);
-
   image_db* db = image_db_open("image.db");
 
   if (!db) {
@@ -140,56 +170,163 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  socklen_t addr_len = sizeof(remote_addr);
 
-  for (;;) {
-    int numbytes = recvfrom(sockfd, buf, 1023, 0,
-                            (struct sockaddr*)&remote_addr, &addr_len);
+  int sfd = bind_tcp("9567");
+  if (sfd == -1) {
+    return 1;
+  }
 
-    buf[numbytes] = '\0';
+  int res = set_nonblocking(sfd);
+  if (res == -1) {
+    return 1;
+  }
 
-    printf("%s\n", buf);
+  res = listen(sfd, SOMAXCONN);
+  if (res == -1) {
+    perror("listen");
+    return 1;
+  }
 
-    tile coord = parse_tile(buf, numbytes);
-    printf("%d %d %d %d %d\n", coord.z, coord.x, coord.y, coord.w, coord.h);
+  int efd = epoll_create1(0);
 
-    int64_t pos_hash = position_hash(coord.z, coord.x, coord.y);
-    image img;
-    img.data = NULL;
-    int fetch_res = image_db_fetch(db, pos_hash, &img);
+  if (efd == -1) {
+    perror("epoll create");
+    return 1;
+  }
 
-    if (fetch_res == -1) {
-      const int MTU_MAX = 512;
-      render_tile(&context.renderer, &coord, &img);
-      const int bytes_to_send = img.len;
-      int bytes_left = bytes_to_send;
+  struct epoll_event event;
+  event.data.fd = sfd;
+  event.events = EPOLLIN | EPOLLET;
 
-      printf("bytes to send: %d\n", bytes_to_send);
-      int offset = 0;
-      while (bytes_left > 0) {
-        int frame_bytes = bytes_left > MTU_MAX ? MTU_MAX : bytes_left;
-        printf("frame bytes: %d\n", frame_bytes);
-        int bytes_sent = sendto(sockfd, img.data + offset, frame_bytes, 0,
-                                (const struct sockaddr*)&remote_addr, addr_len);
-        if (bytes_sent <= 0) {
-          printf("failed to send data\n");
-          break;
+  res = epoll_ctl(efd, EPOLL_CTL_ADD, sfd, &event);
+
+  if (res == -1) {
+    perror("epoll ctl");
+    return 1;
+  }
+
+  const int max_events = 128;
+  struct epoll_event* events =
+      (struct epoll_event*)calloc(max_events, sizeof(event));
+
+  bool running = true;
+  while (running) {
+    int n = epoll_wait(efd, events, max_events, -1);
+
+    for (int i = 0; i < n; i++) {
+      struct epoll_event* ev = &events[i];
+      uint32_t ev_flags = events[i].events;
+      if (ev_flags & EPOLLERR || ev_flags & EPOLLHUP || !(ev_flags & EPOLLIN)) {
+        fprintf(stderr, "epoll error\n");
+        close(events[i].data.fd);
+        continue;
+      } else if (sfd == ev->data.fd) {
+        while (1) {
+          struct sockaddr in_addr;
+          socklen_t in_len;
+          int client_fd = accept(sfd, &in_addr, &in_len);
+
+          if (client_fd == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+              break;
+            } else {
+              perror("accept");
+              break;
+            }
+          }
+
+          char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
+          res = getnameinfo(&in_addr, in_len, hbuf, sizeof(hbuf), sbuf,
+                            sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
+
+          if (res == 0) {
+            printf("Connection from %s:%s\n", hbuf, sbuf);
+          }
+
+          res = set_nonblocking(client_fd);
+
+          if (res == -1) {
+            fprintf(stderr, "failed to set client nonblocking\n");
+            break;
+          }
+
+          event.data.fd = client_fd;
+          event.events = EPOLLIN | EPOLLET;
+
+          res = epoll_ctl(efd, EPOLL_CTL_ADD, client_fd, &event);
+
+          if (res == -1) {
+            perror("epoll client add");
+            break;
+          }
         }
+      } else {
+        const int write_buf_len = 512;
+        char buf[write_buf_len + 1];
+        for (;;) {
+          ssize_t num_bytes = read(ev->data.fd, buf, write_buf_len);
+          if (num_bytes == -1) {
+            if (errno != EAGAIN) {
+              perror("fd read");
+              close(ev->data.fd);
+            }
+            break;
+          } else if (num_bytes == 0) {
+            printf("Client on FD %d closed\n", ev->data.fd);
+            close(ev->data.fd); 
+            break;
+          }
 
-        bytes_left -= bytes_sent;
-        offset += bytes_sent;
-        printf("sent %d bytes\n", bytes_sent);
+          buf[num_bytes] = '\0';
+
+          printf("Read res: %d\n", num_bytes);
+          printf("Request: %s\n", buf);
+
+          tile coord = parse_tile(buf, num_bytes);
+
+          int64_t pos_hash = position_hash(coord.z, coord.x, coord.y);
+          image img;
+          img.data = NULL;
+          int fetch_res = image_db_fetch(db, pos_hash, &img);
+
+          if (fetch_res == -1) {
+            render_tile(&context.renderer, &coord, &img);
+
+            // send amount of bytes
+            
+            send(ev->data.fd, &img.len, sizeof(int));
+
+            const int bytes_to_send = img.len;
+            printf("Bytes to send: %d\n", bytes_to_send);
+
+            int bytes_left = bytes_to_send;
+
+            while (bytes_left > 0) {
+              int bytes_sent = send(ev->data.fd, img.data, bytes_left, 0);
+              printf("Bytes written: %d\n", write_res);
+
+              if (bytes_sent == -1) {
+                perror("send to client fail");
+                break;
+              }
+
+              bytes_left -= bytes_sent;
+            }
+
+          }
+
+          if (img.data) {
+            free(img.data);
+          }
+        }
       }
-    }
-
-    if (img.data) {
-      free(img.data);
     }
   }
 
-  close(sockfd);
+  close(sfd);
 
   image_db_close(db);
+  free(events);
 
   return 0;
 }

@@ -28,7 +28,8 @@ image_db* image_db_open(const char* db_file) {
       "CREATE TABLE IF NOT EXISTS image (image_hash integer primary "
       "key not null, data blob not null);"
       "CREATE TABLE IF NOT EXISTS tile (location_hash integer "
-      "primary key not null, image_hash integer not null);",
+      "primary key not null, image_hash integer not null);"
+      "CREATE INDEX IF NOT EXISTS tile_image_hash_index ON tile (image_hash);",
       NULL, NULL, &err_msg);
 
   if (res != SQLITE_OK) {

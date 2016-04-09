@@ -16,6 +16,9 @@
 #include "ini/ini.h"
 #include "tile.h"
 #include "image.h"
+#include "hash/MurmurHash2.h"
+
+const uint64_t HASH_SEED = 0x1F0D3804;
 
 void set_signal_handler(int sig_num, void (*handler)(int sig_num)) {
   struct sigaction action;
@@ -27,7 +30,7 @@ void set_signal_handler(int sig_num, void (*handler)(int sig_num)) {
   sigaction(sig_num, &action, NULL);
 }
 
-int64_t position_hash(int64_t z, int64_t x, int64_t y) {
+uint64_t position_hash(uint64_t z, uint64_t x, uint64_t y) {
   return (z << 40) | (x << 20) | y;
 }
 
@@ -39,38 +42,6 @@ int atoi_len(const char* s, int len) {
   }
 
   return n;
-}
-
-tile parse_tile(const char* s, int len) {
-  int vals[5] = {0};
-  char buf[16];
-  int idx = 0;
-  int v_idx = 0;
-
-  for (int i = 0; i < len; i++) {
-    char c = s[i];
-    if (c == ',') {
-      buf[idx] = '\0';
-      vals[v_idx++] = atoi(buf);
-      idx = 0;
-
-      if (v_idx == 4) {
-        // parse remaining after last comma
-        for (int j = i + 1; j < len; j++) {
-          buf[idx++] = s[j];
-        }
-        buf[idx] = '\0';
-        vals[v_idx] = atoi(buf);
-        break;
-      }
-    } else {
-      buf[idx++] = c;
-    }
-  }
-
-  tile c;
-  memcpy(&c, vals, sizeof(vals));
-  return c;
 }
 
 struct tile_request {
@@ -295,10 +266,10 @@ int main(int argc, char** argv) {
           }
         }
       } else {
-        const int write_buf_len = 512;
-        char buf[write_buf_len + 1];
+        const int read_buf_len = 512;
+        char buf[read_buf_len + 1];
         for (;;) {
-          ssize_t num_bytes = read(ev->data.fd, buf, write_buf_len);
+          ssize_t num_bytes = read(ev->data.fd, buf, read_buf_len);
           if (num_bytes == -1) {
             if (errno != EAGAIN) {
               perror("fd read");
@@ -313,23 +284,25 @@ int main(int argc, char** argv) {
 
           buf[num_bytes] = '\0';
 
-          printf("Read res: %d\n", num_bytes);
           printf("Request: %s\n", buf);
 
           tile coord = parse_tile(buf, num_bytes);
 
-          int64_t pos_hash = position_hash(coord.z, coord.x, coord.y);
+          uint64_t pos_hash = position_hash(coord.z, coord.x, coord.y);
           image img;
           img.data = NULL;
-          int fetch_res = image_db_fetch(db, pos_hash, &img);
-
-          if (fetch_res == -1) {
-            render_tile(&context.renderer, &coord, &img);
-            printf("Rendered image, len: %d\n", img.len);
-            send_tile(ev->data.fd, &img);
+          bool existing = image_db_fetch(db, pos_hash, &img);
+          if (existing) {
+            printf("Retrieved image, len: %d\n", img.len);
           } else {
-            printf("Got image, len: %d\n", img.len);
+            render_tile(&context.renderer, &coord, &img);
+            uint64_t image_hash = MurmurHash2(img.data, img.len, HASH_SEED);
+            bool add_img = image_db_add_image(db, &img, image_hash);
+            bool add_pos = image_db_add_position(db, pos_hash, image_hash);
+            printf("Rendered image, len: %d\n", img.len);
           }
+
+          send_tile(ev->data.fd, &img);
 
           if (img.data) {
             free(img.data);

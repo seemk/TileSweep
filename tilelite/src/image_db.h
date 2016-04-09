@@ -15,6 +15,6 @@ struct image_db {
 
 image_db* image_db_open(const char* db_file);
 void image_db_close(image_db* db);
-int image_db_fetch(const image_db* db, int64_t position_hash, image* img);
-void image_db_add_position(image_db* db, int64_t position_hash, int64_t image_hash);
-void image_db_add_image(image_db* db, const image* img);
+bool image_db_fetch(const image_db* db, uint64_t position_hash, image* img);
+bool image_db_add_position(image_db* db, uint64_t position_hash, uint64_t image_hash);
+bool image_db_add_image(image_db* db, const image* img, uint64_t image_hash);

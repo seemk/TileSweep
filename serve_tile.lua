@@ -1,7 +1,7 @@
 local bit = require("bit")
 
 local sock = ngx.socket.tcp();
-sock:settimeout(1000);
+sock:settimeout(30000)
 local ok, err = sock:connect("127.0.0.1", 9567)
 if not ok then
   ngx.exit(ngx.HTTP_REQUEST_TIMEOUT)
@@ -13,7 +13,6 @@ local h = ngx.var.h or 256
 query = string.format("%d,%d,%d,%d,%d", ngx.var.z, ngx.var.x, ngx.var.y, w, h)
 ok, err = sock:send(query)
 
-sock:settimeout(30000)
 local size_data, err = sock:receive(4)
 if not size_data then
   ngx.exit(ngx.HTTP_REQUEST_TIMEOUT)

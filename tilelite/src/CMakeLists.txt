@@ -8,8 +8,11 @@ include_directories("/usr/local/include/mapnik")
 
 add_executable(tilelite
   tilelite.cpp
+  tile.cpp
   tile_renderer.cpp
   image_db.cpp
+
+  hash/MurmurHash2.cpp
 
   ini/ini.c
 )

@@ -8,3 +8,4 @@ struct tile {
   int h;
 };
 
+tile parse_tile(const char* s, int len);

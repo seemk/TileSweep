@@ -60,11 +60,16 @@ image_db* image_db_open(const char* db_file) {
     return NULL;
   }
 
+  sqlite3_stmt* insert_image = NULL;
+  res = sqlite3_prepare_v2(sqlite_db,
+    "INSERT INTO image VALUES (?, ?)", -1, &insert_image, NULL);
+
 
   image_db* db = (image_db*)calloc(1, sizeof(image_db));
   db->db = sqlite_db;
   db->fetch_query = fetch_query;
   db->insert_position = insert_position;
+  db->insert_image = insert_image;
 
   return db;
 }
@@ -75,12 +80,13 @@ void image_db_close(image_db* db) {
   free(db);
 }
 
-int image_db_fetch(const image_db* db, int64_t position_hash, image* img) {
+bool image_db_fetch(const image_db* db, uint64_t position_hash, image* img) {
   sqlite3_reset(db->fetch_query);
 
   sqlite3_bind_int64(db->fetch_query, 1, position_hash);
 
-  if (sqlite3_step(db->fetch_query) == SQLITE_ROW) {
+  int res = sqlite3_step(db->fetch_query);
+  if (res == SQLITE_ROW) {
     const void* blob = sqlite3_column_blob(db->fetch_query, 0);
     int num_bytes = sqlite3_column_bytes(db->fetch_query, 0);
 
@@ -88,8 +94,30 @@ int image_db_fetch(const image_db* db, int64_t position_hash, image* img) {
     memcpy(img->data, blob, num_bytes);
     img->len = num_bytes;
 
-    return 0;
+    return true;
   }
 
-  return -1;
+  return false;
+}
+
+bool image_db_add_position(image_db* db, uint64_t position_hash, uint64_t image_hash) {
+  sqlite3_stmt* query = db->insert_position;
+
+  sqlite3_reset(query);
+
+  sqlite3_bind_int64(query, 1, position_hash);
+  sqlite3_bind_int64(query, 2, image_hash);
+
+  return sqlite3_step(query) == SQLITE_DONE;
+}
+
+bool image_db_add_image(image_db* db, const image* img, uint64_t image_hash) {
+  sqlite3_stmt* query = db->insert_image;
+
+  sqlite3_reset(query);
+
+  sqlite3_bind_int64(query, 1, image_hash);
+  sqlite3_bind_blob(query, 2, img->data, img->len, SQLITE_STATIC);
+
+  return sqlite3_step(query) == SQLITE_DONE;
 }

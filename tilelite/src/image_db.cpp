@@ -77,6 +77,8 @@ image_db* image_db_open(const char* db_file) {
 
 void image_db_close(image_db* db) {
   sqlite3_finalize(db->fetch_query);
+  sqlite3_finalize(db->insert_position);
+  sqlite3_finalize(db->insert_image);
   sqlite3_close_v2(db->db);
   free(db);
 }

@@ -2,6 +2,16 @@
 #include <string.h>
 #include <stdlib.h>
 
+int atoi_len(const char* s, int len) {
+  int n = 0;
+
+  for (int i = len; i > 0; i--) {
+    n = n * 10 + (*s++ - '0');
+  }
+
+  return n;
+}
+
 tile parse_tile(const char* s, int len) {
   int vals[5] = {0};
   char buf[16];

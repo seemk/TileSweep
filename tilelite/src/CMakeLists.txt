@@ -8,6 +8,7 @@ include_directories("/usr/local/include/mapnik")
 
 add_executable(tilelite
   tilelite.cpp
+  tilelite_server.cpp
   tile.cpp
   tile_renderer.cpp
   image_db.cpp

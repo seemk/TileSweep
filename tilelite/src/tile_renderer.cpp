@@ -7,8 +7,8 @@
 #include <mapnik/image_util.hpp>
 #include <mapnik/image.hpp>
 #include <mapnik/well_known_srs.hpp>
-#include "tile.h"
 #include "image.h"
+#include "tile.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb/stb_image_write.h"
@@ -71,11 +71,7 @@ bool render_tile(tile_renderer* renderer, const tile* tile, image* image) {
   mapnik::agg_renderer<mapnik::image_rgba8> ren(*renderer->map, buf);
   ren.apply();
 
-  printf("pitch %u\n", buf.row_size());
   image->data = stbi_write_png_to_mem(buf.bytes(), buf.row_size(), tile->w, tile->h, 4,
                                       &image->len);
-
-  printf("PNG len: %d\n", image->len);
-
   return true;
 }

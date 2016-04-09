@@ -1,6 +1,6 @@
 #pragma once
 
 struct image {
-  int len;
-  uint8_t* data;
+  int len = 0;
+  uint8_t* data = NULL;
 };

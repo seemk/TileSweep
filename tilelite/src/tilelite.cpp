@@ -9,12 +9,23 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
+#include <signal.h>
 #include "image_db.h"
 #include <string>
 #include "tile_renderer.h"
 #include "ini/ini.h"
 #include "tile.h"
 #include "image.h"
+
+void set_signal_handler(int sig_num, void (*handler)(int sig_num)) {
+  struct sigaction action;
+
+  memset(&action, 0, sizeof(action));
+
+  sigemptyset(&action.sa_mask);
+  action.sa_handler = handler;
+  sigaction(sig_num, &action, NULL);
+}
 
 int64_t position_hash(int64_t z, int64_t x, int64_t y) {
   return (z << 40) | (x << 20) | y;
@@ -154,6 +165,28 @@ int set_nonblocking(int fd) {
   return 0;
 }
 
+void send_tile(int fd, const image* img) {
+  send(fd, &img->len, sizeof(int), 0);
+
+  const int bytes_to_send = img->len;
+  printf("Bytes to send: %d\n", bytes_to_send);
+
+  int bytes_left = bytes_to_send;
+
+  while (bytes_left > 0) {
+    printf("Sending bytes %d\n", bytes_left);
+    int bytes_sent = send(fd, img->data, bytes_left, 0);
+    printf("Bytes written: %d\n", bytes_sent);
+
+    if (bytes_sent == -1) {
+      perror("send to client fail");
+      break;
+    }
+
+    bytes_left -= bytes_sent;
+  }
+}
+
 int main(int argc, char** argv) {
   tilelite context;
 
@@ -170,6 +203,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+  set_signal_handler(SIGPIPE, SIG_IGN);
 
   int sfd = bind_tcp("9567");
   if (sfd == -1) {
@@ -291,29 +325,10 @@ int main(int argc, char** argv) {
 
           if (fetch_res == -1) {
             render_tile(&context.renderer, &coord, &img);
-
-            // send amount of bytes
-
+            printf("Rendered image, len: %d\n", img.len);
+            send_tile(ev->data.fd, &img);
+          } else {
             printf("Got image, len: %d\n", img.len);
-            send(ev->data.fd, &img.len, sizeof(int), 0);
-
-            const int bytes_to_send = img.len;
-            printf("Bytes to send: %d\n", bytes_to_send);
-
-            int bytes_left = bytes_to_send;
-
-            while (bytes_left > 0) {
-              int bytes_sent = send(ev->data.fd, img.data, bytes_left, 0);
-              printf("Bytes written: %d\n", bytes_sent);
-
-              if (bytes_sent == -1) {
-                perror("send to client fail");
-                break;
-              }
-
-              bytes_left -= bytes_sent;
-            }
-
           }
 
           if (img.data) {
@@ -324,6 +339,7 @@ int main(int argc, char** argv) {
     }
   }
 
+  printf("Quitting\n");
   close(sfd);
 
   image_db_close(db);

@@ -112,6 +112,16 @@ int set_nonblocking(int fd) {
   return 0;
 }
 
+void set_defaults(tilelite_config* conf) {
+  auto set_key = [conf](const char* key, const char* value) {
+    if (conf->count(key) == 0) (*conf)[key] = value;
+  };
+
+  set_key("threads", "1");
+  set_key("tile_db", "tiles.db");
+  set_key("port", "9567");
+}
+
 int main(int argc, char** argv) {
   tilelite_config conf;
 
@@ -120,16 +130,13 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  if (conf.count("threads") == 0) conf["threads"] = "1";
-  if (conf.count("tile_db") == 0) conf["tile_db"] = "tiles.db";
+  set_defaults(&conf);
 
-  //tile_renderer_init(&context->renderer, value);
-  //image_db* db = image_db_open("image.db");
   auto context = std::unique_ptr<tilelite>(new tilelite(&conf));
 
   set_signal_handler(SIGPIPE, SIG_IGN);
 
-  int sfd = bind_tcp("9567");
+  int sfd = bind_tcp(conf["port"].c_str());
   if (sfd == -1) {
     return 1;
   }

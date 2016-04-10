@@ -78,6 +78,8 @@ bool render_tile(tile_renderer* renderer, const tile* tile, image* image) {
     return false;
   }
 
+  image->width = tile->w;
+  image->height = tile->h;
   image->data = stbi_write_png_to_mem(buf.bytes(), buf.row_size(), tile->w, tile->h, 4,
                                       &image->len);
   return true;

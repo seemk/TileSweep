@@ -90,10 +90,10 @@ void tilelite::thread_job(image_db* db, const tilelite_config* conf) {
 
     tile_request req;
     while (pending_requests.try_dequeue(req)) {
-      uint64_t pos_hash = req.req_tile.hash();
+      tile t = req.req_tile;
+      uint64_t pos_hash = t.hash();
       image img;
-
-      bool existing = image_db_fetch(db, pos_hash, &img);
+      bool existing = image_db_fetch(db, pos_hash, t.w, t.h, &img);
       if (existing) {
         send_tile(req.sock_fd, &img);
       } else {

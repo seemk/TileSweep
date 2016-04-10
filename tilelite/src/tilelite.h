@@ -2,13 +2,15 @@
 
 #include <thread>
 #include <vector>
-#include <queue>
-#include <mutex>
 #include "thread/sema.h"
+#include "thread/concurrentqueue.h"
 #include "image.h"
 #include "tile.h"
 #include "tile_renderer.h"
 #include "tilelite_config.h"
+
+template <typename T>
+using tl_queue = moodycamel::ConcurrentQueue<T>;
 
 struct image_db;
 struct tile_renderer;
@@ -27,21 +29,18 @@ struct image_write_task {
 struct tilelite {
   tilelite(const tilelite_config* conf);
   ~tilelite();
-  void add_tile_request(tile_request req);
+  void queue_tile_request(tile_request req);
   void thread_job(image_db* db, const tilelite_config* conf);
   void image_write_job(image_db* db, const tilelite_config* conf);
   void queue_image_write(image_write_task task);
   void stop() { running = false; }
   std::vector<image_db*> databases;
-  std::mutex queue_lock;
-  std::queue<tile_request> pending_requests;
+  LightweightSemaphore pending_requests_sema;
+  tl_queue<tile_request> pending_requests;
   std::atomic_bool running;
-  LightweightSemaphore sema;
   std::vector<std::thread> threads;
 
-  std::mutex img_queue_lock;
-  std::queue<image_write_task> pending_img_writes;
-  LightweightSemaphore img_write_sema;
+  LightweightSemaphore pending_img_writes_sema;
+  tl_queue<image_write_task> pending_img_writes;
   std::thread image_write_thread;
 };
-

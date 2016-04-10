@@ -280,7 +280,7 @@ int main(int argc, char** argv) {
 
           tile coord = parse_tile(buf, num_bytes);
 
-          context->add_tile_request({ev->data.fd, coord});
+          context->queue_tile_request({ev->data.fd, coord});
         }
       }
     }

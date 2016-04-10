@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <sys/socket.h>
 #include "hash/MurmurHash2.h"
+#include <chrono>
 
 const uint64_t HASH_SEED = 0x1F0D3804;
 
@@ -51,27 +52,25 @@ tilelite::tilelite(const tilelite_config* conf)
   image_write_thread = std::thread([=] { this->image_write_job(write_db, conf); });
 }
 
-void tilelite::add_tile_request(tile_request req) {
-  std::lock_guard<std::mutex> lock(queue_lock);
-  pending_requests.push(req);
-  sema.signal(1);
+void tilelite::queue_tile_request(tile_request req) {
+  pending_requests.enqueue(req);
+  pending_requests_sema.signal(1);
 }
 
 void tilelite::queue_image_write(image_write_task task) {
-  std::lock_guard<std::mutex> lock(img_queue_lock);
-  pending_img_writes.push(task);
-  img_write_sema.signal(1);
+  pending_img_writes.enqueue(task);
+  pending_img_writes_sema.signal(1);
 }
 
 tilelite::~tilelite() {
   running = false;
 
-  sema.signal(threads.size());
-  img_write_sema.signal(1);
+  pending_requests_sema.signal(threads.size());
   for (std::thread& t : threads) {
     t.join();
   }
 
+  pending_img_writes_sema.signal(1);
   image_write_thread.join();
 
   for (image_db* db : databases) {
@@ -87,29 +86,22 @@ void tilelite::thread_job(image_db* db, const tilelite_config* conf) {
 
   auto id = std::this_thread::get_id();
   while (running) {
-    sema.wait();
+    pending_requests_sema.wait();
 
-    std::unique_lock<std::mutex> lock(queue_lock);
+    tile_request req;
+    while (pending_requests.try_dequeue(req)) {
+      uint64_t pos_hash = req.req_tile.hash();
+      image img;
 
-    if (pending_requests.empty()) continue;
-
-    tile_request req = pending_requests.front();
-    pending_requests.pop();
-    lock.unlock();
-
-    uint64_t pos_hash = req.req_tile.hash();
-    image img;
-
-    bool existing = image_db_fetch(db, pos_hash, &img);
-    if (existing) {
-      send_tile(req.sock_fd, &img);
-    } else {
-      if (render_tile(&renderer, &req.req_tile, &img)) {
+      bool existing = image_db_fetch(db, pos_hash, &img);
+      if (existing) {
         send_tile(req.sock_fd, &img);
-
-        uint64_t image_hash = MurmurHash2(img.data, img.len, HASH_SEED);
-
-        queue_image_write({img, pos_hash, image_hash});
+      } else {
+        if (render_tile(&renderer, &req.req_tile, &img)) {
+          send_tile(req.sock_fd, &img);
+          uint64_t image_hash = MurmurHash2(img.data, img.len, HASH_SEED);
+          queue_image_write({img, pos_hash, image_hash});
+        }
       }
     }
   }
@@ -119,17 +111,12 @@ void tilelite::thread_job(image_db* db, const tilelite_config* conf) {
 
 void tilelite::image_write_job(image_db* db, const tilelite_config* conf) {
   while (running) {
-    img_write_sema.wait();
+    pending_img_writes_sema.wait();
 
-    std::lock_guard<std::mutex> lock(img_queue_lock);
-    
-    while (!pending_img_writes.empty()) {
-      image_write_task task = pending_img_writes.front();
-      pending_img_writes.pop();
-
+    image_write_task task;
+    while (pending_img_writes.try_dequeue(task)) {
       image_db_add_image(db, &task.img, task.image_hash);
       image_db_add_position(db, task.position_hash, task.image_hash);
-
       free(task.img.data);
     }
   }

@@ -53,8 +53,6 @@ latlon xyz_latlon(double x, double y, double z) {
   return res;
 }
 
-mapnik::box2d<double> tile_bbox(const tile* tile) {}
-
 bool render_tile(tile_renderer* renderer, const tile* tile, image* image) {
   latlon p1 = xyz_latlon(double(tile->x), double(tile->y), double(tile->z));
   latlon p2 = xyz_latlon(double(tile->x + 1), double(tile->y + 1), double(tile->z));

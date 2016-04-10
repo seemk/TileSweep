@@ -19,7 +19,7 @@ image_db* image_db_open(const char* db_file) {
       sqlite3_exec(sqlite_db, "PRAGMA journal_mode=WAL", NULL, NULL, &err_msg);
 
   if (res != SQLITE_OK) {
-    fprintf(stderr, "%s\n", err_msg);
+    fprintf(stderr, "image_db: failued to set journal mode: %s\n", err_msg);
     return NULL;
   }
 
@@ -93,9 +93,9 @@ bool image_db_fetch(const image_db* db, uint64_t position_hash, image* img) {
     const void* blob = sqlite3_column_blob(db->fetch_query, 0);
     int num_bytes = sqlite3_column_bytes(db->fetch_query, 0);
 
+    img->len = num_bytes;
     img->data = (uint8_t*)calloc(num_bytes, 1);
     memcpy(img->data, blob, num_bytes);
-    img->len = num_bytes;
 
     return true;
   }

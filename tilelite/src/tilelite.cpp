@@ -8,7 +8,11 @@
 const uint64_t HASH_SEED = 0x1F0D3804;
 
 void send_tile(int fd, const image* img) {
-  send(fd, &img->len, sizeof(int), 0);
+  int header_bytes_sent = send(fd, &img->len, sizeof(int), 0);
+  if (header_bytes_sent == -1) {
+    perror("failure sending image size");
+    return;
+  }
 
   const int bytes_to_send = img->len;
 
@@ -27,17 +31,24 @@ void send_tile(int fd, const image* img) {
 }
 
 tilelite::tilelite(const tilelite_config* conf)
-  : running(true)
-  , image_write_thread([this] { this->image_write_job(); }) {
+  : running(true) {
 
   int num_threads = std::stoi(conf->at("threads"));
+  if (num_threads < 1) num_threads = 1;
 
   std::string db_name = conf->at("tile_db");
-  writer_db = image_db_open(db_name.c_str());
+  for (int i = 0; i < num_threads + 1; i++) {
+    image_db* db = image_db_open(db_name.c_str());
+    databases.push_back(db);
+  }
 
   for (int i = 0; i < num_threads; i++) {
-    threads.emplace_back([=] { this->thread_job(conf); });
+    image_db* db = databases[i];
+    threads.emplace_back([=] { this->thread_job(db, conf); });
   }
+
+  image_db* write_db = databases[num_threads];
+  image_write_thread = std::thread([=] { this->image_write_job(write_db, conf); });
 }
 
 void tilelite::add_tile_request(tile_request req) {
@@ -54,16 +65,23 @@ void tilelite::queue_image_write(image_write_task task) {
 
 tilelite::~tilelite() {
   running = false;
+
+  sema.signal(threads.size());
+  img_write_sema.signal(1);
   for (std::thread& t : threads) {
     t.join();
   }
+
+  image_write_thread.join();
+
+  for (image_db* db : databases) {
+    image_db_close(db);
+  }
 }
 
-void tilelite::thread_job(const tilelite_config* conf) {
-  std::string db_name = conf->at("tile_db");
+void tilelite::thread_job(image_db* db, const tilelite_config* conf) {
   std::string mapnik_xml_path = conf->at("mapnik_xml");
 
-  image_db* db = image_db_open(db_name.c_str());
   tile_renderer renderer;
   tile_renderer_init(&renderer, mapnik_xml_path.c_str());
 
@@ -95,10 +113,10 @@ void tilelite::thread_job(const tilelite_config* conf) {
     }
   }
 
-  image_db_close(db);
+  tile_renderer_destroy(&renderer);
 }
 
-void tilelite::image_write_job() {
+void tilelite::image_write_job(image_db* db, const tilelite_config* conf) {
   while (running) {
     img_write_sema.wait();
 
@@ -108,8 +126,8 @@ void tilelite::image_write_job() {
       image_write_task task = pending_img_writes.front();
       pending_img_writes.pop();
 
-      image_db_add_image(writer_db, &task.img, task.image_hash);
-      image_db_add_position(writer_db, task.position_hash, task.image_hash);
+      image_db_add_image(db, &task.img, task.image_hash);
+      image_db_add_position(db, task.position_hash, task.image_hash);
 
       free(task.img.data);
     }

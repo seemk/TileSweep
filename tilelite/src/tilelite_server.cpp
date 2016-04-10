@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <signal.h>
+#include <sys/signalfd.h>
 #include "image_db.h"
 #include <string>
 #include "tile_renderer.h"
@@ -18,7 +19,6 @@
 #include "image.h"
 #include "tilelite.h"
 #include "tilelite_config.h"
-
 
 void set_signal_handler(int sig_num, void (*handler)(int sig_num)) {
   struct sigaction action;
@@ -131,9 +131,6 @@ int main(int argc, char** argv) {
   }
 
   set_defaults(&conf);
-
-  auto context = std::unique_ptr<tilelite>(new tilelite(&conf));
-
   set_signal_handler(SIGPIPE, SIG_IGN);
 
   int sfd = bind_tcp(conf["port"].c_str());
@@ -174,19 +171,53 @@ int main(int argc, char** argv) {
   struct epoll_event* events =
       (struct epoll_event*)calloc(max_events, sizeof(event));
 
-  bool running = true;
-  while (running) {
+  sigset_t signals;
+  sigemptyset(&signals);
+  sigaddset(&signals, SIGINT);
+  sigprocmask(SIG_BLOCK, &signals, NULL);
+
+  int sig_fd = signalfd(-1, &signals, SFD_NONBLOCK);
+
+  if (sig_fd == -1) {
+    perror("signalfd creation: ");
+    return 1;
+  }
+
+  struct epoll_event sig_event;
+  sig_event.data.fd = sig_fd;
+  sig_event.events = EPOLLIN;
+  if (epoll_ctl(efd, EPOLL_CTL_ADD, sig_fd, &sig_event) == -1) {
+    perror("signalfd epoll failure: ");
+    return 0;
+  }
+
+  auto context = std::unique_ptr<tilelite>(new tilelite(&conf));
+  for(;;) {
     int n = epoll_wait(efd, events, max_events, -1);
 
     for (int i = 0; i < n; i++) {
       struct epoll_event* ev = &events[i];
       uint32_t ev_flags = events[i].events;
+
+      if (ev->data.fd == sig_fd) {
+        struct signalfd_siginfo info;
+        int signal_bytes = read(sig_fd, &info, sizeof(info));
+        assert(signal_bytes == sizeof(info));
+
+        if (info.ssi_signo == SIGINT) {
+          close(sfd);
+          close(efd);
+          context.reset();
+          return 0;
+        }
+      }
+
       if (ev_flags & EPOLLERR || ev_flags & EPOLLHUP || !(ev_flags & EPOLLIN)) {
         fprintf(stderr, "epoll error\n");
         close(events[i].data.fd);
         continue;
       } else if (sfd == ev->data.fd) {
-        while (1) {
+        for(;;) {
           struct sockaddr in_addr;
           socklen_t in_len = sizeof(in_addr);
           int client_fd = accept(sfd, &in_addr, &in_len);
@@ -254,9 +285,8 @@ int main(int argc, char** argv) {
     }
   }
 
-  printf("Quitting\n");
+  close(efd);
   close(sfd);
-
   free(events);
 
   return 0;

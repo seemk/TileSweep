@@ -78,3 +78,7 @@ bool render_tile(tile_renderer* renderer, const tile* tile, image* image) {
                                       &image->len);
   return true;
 }
+
+void tile_renderer_destroy(tile_renderer* renderer) {
+  if (renderer->map) delete renderer->map;
+}

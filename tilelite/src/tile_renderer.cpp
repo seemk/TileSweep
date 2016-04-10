@@ -43,21 +43,21 @@ bool tile_renderer_init(tile_renderer* renderer, const char* mapnik_xml_path) {
   return true;
 }
 
-latlon xyz_latlon(int x, int y, int z) {
+latlon xyz_latlon(double x, double y, double z) {
   latlon res;
 
-  double n = std::pow(2.0, double(z));
-  res.longitude = double(x) / n * 360.0 - 180.0;
+  double n = std::pow(2.0, z);
+  res.longitude = x / n * 360.0 - 180.0;
   res.latitude =
-      std::atan(std::sinh(PI * (1.0 - 2.0 * double(y) / n))) * 180.0 / PI;
+      std::atan(std::sinh(PI * (1.0 - 2.0 * y / n))) * 180.0 / PI;
   return res;
 }
 
 mapnik::box2d<double> tile_bbox(const tile* tile) {}
 
 bool render_tile(tile_renderer* renderer, const tile* tile, image* image) {
-   latlon p1 = xyz_latlon(tile->x, tile->y, tile->z);
-   latlon p2 = xyz_latlon(tile->x + 1, tile->y + 1, tile->z);
+  latlon p1 = xyz_latlon(double(tile->x), double(tile->y), double(tile->z));
+  latlon p2 = xyz_latlon(double(tile->x + 1), double(tile->y + 1), double(tile->z));
 
   mapnik::lonlat2merc(&p1.longitude, &p1.latitude, 1);
   mapnik::lonlat2merc(&p2.longitude, &p2.latitude, 1);
@@ -66,6 +66,9 @@ bool render_tile(tile_renderer* renderer, const tile* tile, image* image) {
                              p2.latitude);
   renderer->map->resize(tile->w, tile->h);
   renderer->map->zoom_to_box(bbox);
+  if (renderer->map->buffer_size() == 0) {
+    renderer->map->set_buffer_size(96);
+  }
 
   mapnik::image_rgba8 buf(tile->w, tile->h);
   mapnik::agg_renderer<mapnik::image_rgba8> ren(*renderer->map, buf);

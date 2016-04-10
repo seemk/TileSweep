@@ -10,7 +10,7 @@ const uint64_t HASH_SEED = 0x1F0D3804;
 void send_tile(int fd, const image* img) {
   int header_bytes_sent = send(fd, &img->len, sizeof(int), 0);
   if (header_bytes_sent == -1) {
-    perror("failure sending image size");
+    perror("failure sending image size: ");
     return;
   }
 
@@ -22,7 +22,7 @@ void send_tile(int fd, const image* img) {
     int bytes_sent = send(fd, img->data, bytes_left, 0);
 
     if (bytes_sent == -1) {
-      perror("send to client fail");
+      perror("send to client fail: ");
       break;
     }
 
@@ -104,12 +104,13 @@ void tilelite::thread_job(image_db* db, const tilelite_config* conf) {
     if (existing) {
       send_tile(req.sock_fd, &img);
     } else {
-      render_tile(&renderer, &req.req_tile, &img);
-      send_tile(req.sock_fd, &img);
+      if (render_tile(&renderer, &req.req_tile, &img)) {
+        send_tile(req.sock_fd, &img);
 
-      uint64_t image_hash = MurmurHash2(img.data, img.len, HASH_SEED);
+        uint64_t image_hash = MurmurHash2(img.data, img.len, HASH_SEED);
 
-      queue_image_write({img, pos_hash, image_hash});
+        queue_image_write({img, pos_hash, image_hash});
+      }
     }
   }
 

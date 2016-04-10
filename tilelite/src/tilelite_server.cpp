@@ -210,10 +210,11 @@ int main(int argc, char** argv) {
           context.reset();
           return 0;
         }
+
+        continue;
       }
 
       if (ev_flags & EPOLLERR || ev_flags & EPOLLHUP || !(ev_flags & EPOLLIN)) {
-        fprintf(stderr, "epoll error\n");
         close(events[i].data.fd);
         continue;
       } else if (sfd == ev->data.fd) {
@@ -226,7 +227,7 @@ int main(int argc, char** argv) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
               break;
             } else {
-              perror("accept");
+              perror("error accepting connection: ");
               break;
             }
           }
@@ -236,7 +237,7 @@ int main(int argc, char** argv) {
                             sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
 
           if (res == 0) {
-            printf("Connection from %s:%s\n", hbuf, sbuf);
+            printf("connection from %s:%s\n", hbuf, sbuf);
           }
 
           res = set_nonblocking(client_fd);

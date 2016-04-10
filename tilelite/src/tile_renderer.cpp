@@ -72,7 +72,13 @@ bool render_tile(tile_renderer* renderer, const tile* tile, image* image) {
 
   mapnik::image_rgba8 buf(tile->w, tile->h);
   mapnik::agg_renderer<mapnik::image_rgba8> ren(*renderer->map, buf);
-  ren.apply();
+
+  try {
+    ren.apply();
+  } catch (std::exception& e) {
+    fprintf(stderr, "error rendering tile:\n %s\n", e.what());
+    return false;
+  }
 
   image->data = stbi_write_png_to_mem(buf.bytes(), buf.row_size(), tile->w, tile->h, 4,
                                       &image->len);

@@ -96,6 +96,7 @@ void tilelite::thread_job(image_db* db, const tilelite_config* conf) {
       bool existing = image_db_fetch(db, pos_hash, t.w, t.h, &img);
       if (existing) {
         send_tile(req.sock_fd, &img);
+        free(img.data);
       } else {
         if (render_tile(&renderer, &req.req_tile, &img)) {
           send_tile(req.sock_fd, &img);

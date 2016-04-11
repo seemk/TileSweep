@@ -33,7 +33,6 @@ struct tilelite {
   void thread_job(image_db* db, const tilelite_config* conf);
   void image_write_job(image_db* db, const tilelite_config* conf);
   void queue_image_write(image_write_task task);
-  void stop() { running = false; }
   std::vector<image_db*> databases;
   LightweightSemaphore pending_requests_sema;
   tl_queue<tile_request> pending_requests;

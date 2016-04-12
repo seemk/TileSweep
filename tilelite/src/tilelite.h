@@ -6,14 +6,12 @@
 #include "thread/concurrentqueue.h"
 #include "image.h"
 #include "tile.h"
-#include "tile_renderer.h"
 #include "tilelite_config.h"
 
 template <typename T>
 using tl_queue = moodycamel::ConcurrentQueue<T>;
 
 struct image_db;
-struct tile_renderer;
 
 struct tile_request {
   int sock_fd;

@@ -1,4 +1,3 @@
-#include <stdlib.h>
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -11,14 +10,9 @@
 #include <string.h>
 #include <signal.h>
 #include <sys/signalfd.h>
-#include "image_db.h"
-#include <string>
-#include "tile_renderer.h"
 #include "ini/ini.h"
-#include "tile.h"
-#include "image.h"
 #include "tilelite.h"
-#include "tilelite_config.h"
+#include "tile_renderer.h"
 
 void set_signal_handler(int sig_num, void (*handler)(int sig_num)) {
   struct sigaction action;

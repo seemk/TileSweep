@@ -1,10 +1,8 @@
 #include "tilelite.h"
 #include "image_db.h"
 #include "tile_renderer.h"
-#include <stdio.h>
 #include <sys/socket.h>
 #include "hash/MurmurHash2.h"
-#include <chrono>
 
 const uint64_t HASH_SEED = 0x1F0D3804;
 

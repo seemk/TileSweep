@@ -1,10 +1,8 @@
 #include "tile_renderer.h"
 #include <mapnik/map.hpp>
 #include <mapnik/load_map.hpp>
-#include <mapnik/datasource.hpp>
 #include <mapnik/datasource_cache.hpp>
 #include <mapnik/agg_renderer.hpp>
-#include <mapnik/image_util.hpp>
 #include <mapnik/image.hpp>
 #include <mapnik/well_known_srs.hpp>
 #include "image.h"

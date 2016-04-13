@@ -6,14 +6,24 @@ find_package(Threads)
 
 include_directories("/usr/local/include/mapnik")
 
-if (APPLE)
-  set(SERVER_SRC server_kqueue.cpp)
+include(CheckFunctionExists)
+
+check_function_exists(kqueue HAVE_KQUEUE)
+check_function_exists(epoll HAVE_EPOLL)
+
+if (HAVE_KQUEUE)
+  set(LOOP_SRC ev_loop_kqueue.cpp)
+  add_definitions(-DTILELITE_KQUEUE)
+elseif (HAVE_EPOLL)
+  set(LOOP_SRC ev_loop_epoll.cpp)
+  add_definitions(-DTILELITE_EPOLL)
 else()
-  set(SERVER_SRC tilelite_server.cpp)
+  message(FATAL_ERROR "epoll or kqueue required")
 endif()
 
 add_executable(tilelite
-  ${SERVER_SRC}
+  tilelite_server.cpp
+  ${LOOP_SRC}
   tcp.cpp
   tilelite.cpp
   tile.cpp

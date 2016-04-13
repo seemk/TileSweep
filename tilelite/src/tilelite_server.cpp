@@ -70,6 +70,154 @@ void set_defaults(tilelite_config* conf) {
   set_key("port", "9567");
 }
 
+const int MAX_EVENTS = 128;
+
+struct ev_loop_epoll {
+  int socket;
+  int efd;
+  void* user = NULL;
+  struct epoll_event event;
+  struct epoll_event[MAX_EVENTS];
+  int sigfd;
+};
+
+bool ev_loop_epoll_init(ev_loop_epoll* loop, int socket) {
+  loop->efd = epoll_create1(0);
+
+  if (loop->efd == -1) {
+    perror("epoll create");
+    return false;
+  }
+
+  loop->event.data.fd = socket;
+  loop->event.events = EPOLLIN | EPOLLET;
+
+  int res = epoll_ctl(loop->efd, EPOLL_CTL_ADD, socket, &loop->event);
+
+  if (res == -1) {
+    perror("epoll ctl");
+    return false;
+  }
+
+  sigset_t signals;
+  sigemptyset(&signals);
+  sigaddset(&signals, SIGINT);
+  sigprocmask(SIG_BLOCK, &signals, NULL);
+
+  int sig_fd = signalfd(-1, &signals, SFD_NONBLOCK);
+
+  if (sig_fd == -1) {
+    perror("signalfd creation: ");
+    return false;
+  }
+
+  struct epoll_event sig_event;
+  sig_event.data.fd = sig_fd;
+  sig_event.events = EPOLLIN;
+  if (epoll_ctl(loop->, EPOLL_CTL_ADD, sig_fd, &sig_event) == -1) {
+    perror("signalfd epoll failure: ");
+    return false;
+  }
+
+  loop->sigfd = sig_fd;
+
+  return true;
+};
+
+void ev_loop_epoll_run(ev_loop_epoll* loop, void (*cb)(int, const char*, int, void*)) {
+  int efd = loop->efd;
+
+  for(;;) {
+    int n = epoll_wait(loop->efd, loop->events, MAX_EVENTS, -1);
+
+    for (int i = 0; i < n; i++) {
+      struct epoll_event* ev = &loop->events[i];
+      uint32_t ev_flags = loop->events[i].events;
+
+      if (ev->data.fd == loop->sigfd) {
+        struct signalfd_siginfo info;
+        int signal_bytes = read(loop->sigfd, &info, sizeof(info));
+        assert(signal_bytes == sizeof(info));
+
+        if (info.ssi_signo == SIGINT) {
+          close(sfd);
+          close(efd);
+          return 0;
+        }
+
+        continue;
+      }
+
+      if (ev_flags & EPOLLERR || ev_flags & EPOLLHUP || !(ev_flags & EPOLLIN)) {
+        close(loop->events[i].data.fd);
+        continue;
+      } else if (loop->socket == ev->data.fd) {
+        for(;;) {
+          struct sockaddr in_addr;
+          socklen_t in_len = sizeof(in_addr);
+          int client_fd = accept(loop->socket, &in_addr, &in_len);
+
+          if (client_fd == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+              break;
+            } else {
+              perror("error accepting connection: ");
+              break;
+            }
+          }
+
+          char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
+          int res = getnameinfo(&in_addr, in_len, hbuf, sizeof(hbuf), sbuf,
+                            sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
+
+          if (res == 0) {
+            printf("connection from %s:%s\n", hbuf, sbuf);
+          }
+
+          res = set_nonblocking(client_fd);
+
+          if (res == -1) {
+            fprintf(stderr, "failed to set client nonblocking\n");
+            break;
+          }
+
+          struct epoll_event event;
+          event.data.fd = client_fd;
+          event.events = EPOLLIN | EPOLLET;
+
+          res = epoll_ctl(loop->, EPOLL_CTL_ADD, client_fd, &event);
+
+          if (res == -1) {
+            perror("epoll client add");
+            break;
+          }
+        }
+      } else {
+        const int read_buf_len = 512;
+        char buf[read_buf_len + 1];
+        for (;;) {
+          ssize_t num_bytes = read(ev->data.fd, buf, read_buf_len);
+          if (num_bytes == -1) {
+            if (errno != EAGAIN) {
+              perror("fd read");
+              close(ev->data.fd);
+            }
+            break;
+          } else if (num_bytes == 0) {
+            printf("Client on FD %d closed\n", ev->data.fd);
+            close(ev->data.fd); 
+            break;
+          }
+
+          buf[num_bytes] = '\0';
+
+          cb(ev->data.fd, buf, num_bytes, loop->user);
+        }
+      }
+    }
+  }
+}
+
 int main(int argc, char** argv) {
   tilelite_config conf;
 
@@ -97,146 +245,18 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  int efd = epoll_create1(0);
-
-  if (efd == -1) {
-    perror("epoll create");
-    return 1;
-  }
-
-  struct epoll_event event;
-  event.data.fd = sfd;
-  event.events = EPOLLIN | EPOLLET;
-
-  res = epoll_ctl(efd, EPOLL_CTL_ADD, sfd, &event);
-
-  if (res == -1) {
-    perror("epoll ctl");
-    return 1;
-  }
-
-  const int max_events = 128;
-  struct epoll_event* events =
-      (struct epoll_event*)calloc(max_events, sizeof(event));
-
-  sigset_t signals;
-  sigemptyset(&signals);
-  sigaddset(&signals, SIGINT);
-  sigprocmask(SIG_BLOCK, &signals, NULL);
-
-  int sig_fd = signalfd(-1, &signals, SFD_NONBLOCK);
-
-  if (sig_fd == -1) {
-    perror("signalfd creation: ");
-    return 1;
-  }
-
-  struct epoll_event sig_event;
-  sig_event.data.fd = sig_fd;
-  sig_event.events = EPOLLIN;
-  if (epoll_ctl(efd, EPOLL_CTL_ADD, sig_fd, &sig_event) == -1) {
-    perror("signalfd epoll failure: ");
-    return 0;
-  }
+  ev_loop_epoll loop;
+  ev_loop_epoll_init(&loop, sfd);
 
   auto context = std::unique_ptr<tilelite>(new tilelite(&conf));
-  for(;;) {
-    int n = epoll_wait(efd, events, max_events, -1);
 
-    for (int i = 0; i < n; i++) {
-      struct epoll_event* ev = &events[i];
-      uint32_t ev_flags = events[i].events;
+  loop.user = context.get();
 
-      if (ev->data.fd == sig_fd) {
-        struct signalfd_siginfo info;
-        int signal_bytes = read(sig_fd, &info, sizeof(info));
-        assert(signal_bytes == sizeof(info));
-
-        if (info.ssi_signo == SIGINT) {
-          close(sfd);
-          close(efd);
-          context.reset();
-          return 0;
-        }
-
-        continue;
-      }
-
-      if (ev_flags & EPOLLERR || ev_flags & EPOLLHUP || !(ev_flags & EPOLLIN)) {
-        close(events[i].data.fd);
-        continue;
-      } else if (sfd == ev->data.fd) {
-        for(;;) {
-          struct sockaddr in_addr;
-          socklen_t in_len = sizeof(in_addr);
-          int client_fd = accept(sfd, &in_addr, &in_len);
-
-          if (client_fd == -1) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-              break;
-            } else {
-              perror("error accepting connection: ");
-              break;
-            }
-          }
-
-          char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
-          res = getnameinfo(&in_addr, in_len, hbuf, sizeof(hbuf), sbuf,
-                            sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
-
-          if (res == 0) {
-            printf("connection from %s:%s\n", hbuf, sbuf);
-          }
-
-          res = set_nonblocking(client_fd);
-
-          if (res == -1) {
-            fprintf(stderr, "failed to set client nonblocking\n");
-            break;
-          }
-
-          event.data.fd = client_fd;
-          event.events = EPOLLIN | EPOLLET;
-
-          res = epoll_ctl(efd, EPOLL_CTL_ADD, client_fd, &event);
-
-          if (res == -1) {
-            perror("epoll client add");
-            break;
-          }
-        }
-      } else {
-        const int read_buf_len = 512;
-        char buf[read_buf_len + 1];
-        for (;;) {
-          ssize_t num_bytes = read(ev->data.fd, buf, read_buf_len);
-          if (num_bytes == -1) {
-            if (errno != EAGAIN) {
-              perror("fd read");
-              close(ev->data.fd);
-            }
-            break;
-          } else if (num_bytes == 0) {
-            printf("Client on FD %d closed\n", ev->data.fd);
-            close(ev->data.fd); 
-            break;
-          }
-
-          buf[num_bytes] = '\0';
-
-          printf("Request: %s\n", buf);
-
-          tile coord = parse_tile(buf, num_bytes);
-
-          context->queue_tile_request({ev->data.fd, coord});
-        }
-      }
-    }
-  }
-
-  close(efd);
-  close(sfd);
-  free(events);
+  ev_loop_epoll_run(&loop [](int fd, const char* data, int len, void* user) {
+    tilelite* ctx = (tilelite*)user;
+    tile coord = parse_tile(data, len);
+    ctx->queue_tile_request({fd, coord});
+  });
 
   return 0;
 }

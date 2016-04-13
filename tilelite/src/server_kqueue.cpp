@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
 
   ev_loop_kqueue loop;
   ev_loop_kqueue_init(&loop, sfd, NULL);
-  ev_loop_kqueue_run(&loop, [](int fd, const char* data, int len, void* user) {
+  ev_loop_kqueue_run(&loop, [](int fd, const char* data, int len, void* user) {
     printf("received data: %s\n", data);
   });
 

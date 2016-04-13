@@ -77,11 +77,12 @@ struct ev_loop_epoll {
   int efd;
   void* user = NULL;
   struct epoll_event event;
-  struct epoll_event[MAX_EVENTS];
+  struct epoll_event events[MAX_EVENTS];
   int sigfd;
 };
 
 bool ev_loop_epoll_init(ev_loop_epoll* loop, int socket) {
+  loop->socket = socket;
   loop->efd = epoll_create1(0);
 
   if (loop->efd == -1) {
@@ -114,7 +115,7 @@ bool ev_loop_epoll_init(ev_loop_epoll* loop, int socket) {
   struct epoll_event sig_event;
   sig_event.data.fd = sig_fd;
   sig_event.events = EPOLLIN;
-  if (epoll_ctl(loop->, EPOLL_CTL_ADD, sig_fd, &sig_event) == -1) {
+  if (epoll_ctl(loop->efd, EPOLL_CTL_ADD, sig_fd, &sig_event) == -1) {
     perror("signalfd epoll failure: ");
     return false;
   }
@@ -140,9 +141,9 @@ void ev_loop_epoll_run(ev_loop_epoll* loop, void (*cb)(int, const char*, int, vo
         assert(signal_bytes == sizeof(info));
 
         if (info.ssi_signo == SIGINT) {
-          close(sfd);
-          close(efd);
-          return 0;
+          close(loop->socket);
+          close(loop->efd);
+          return;
         }
 
         continue;
@@ -185,7 +186,7 @@ void ev_loop_epoll_run(ev_loop_epoll* loop, void (*cb)(int, const char*, int, vo
           event.data.fd = client_fd;
           event.events = EPOLLIN | EPOLLET;
 
-          res = epoll_ctl(loop->, EPOLL_CTL_ADD, client_fd, &event);
+          res = epoll_ctl(loop->efd, EPOLL_CTL_ADD, client_fd, &event);
 
           if (res == -1) {
             perror("epoll client add");
@@ -252,7 +253,7 @@ int main(int argc, char** argv) {
 
   loop.user = context.get();
 
-  ev_loop_epoll_run(&loop [](int fd, const char* data, int len, void* user) {
+  ev_loop_epoll_run(&loop, [](int fd, const char* data, int len, void* user) {
     tilelite* ctx = (tilelite*)user;
     tile coord = parse_tile(data, len);
     ctx->queue_tile_request({fd, coord});

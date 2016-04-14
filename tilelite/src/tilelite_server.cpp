@@ -70,8 +70,6 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  auto context = std::unique_ptr<tilelite>(new tilelite(&conf));
-
 #ifdef TILELITE_EPOLL
   ev_loop_epoll loop;
   ev_loop_epoll_init(&loop, sfd);
@@ -80,6 +78,7 @@ int main(int argc, char** argv) {
   ev_loop_kqueue_init(&loop, sfd);
 #endif
 
+  auto context = std::unique_ptr<tilelite>(new tilelite(&conf));
   loop.user = context.get();
 
   auto read_callback = [](int fd, const char* data, int len, void* user) {

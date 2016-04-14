@@ -43,10 +43,10 @@ bool ev_loop_epoll_init(ev_loop_epoll* loop, int socket) {
     return false;
   }
 
-  loop->event.data.fd = socket;
-  loop->event.events = EPOLLIN | EPOLLET;
-
-  res = epoll_ctl(loop->efd, EPOLL_CTL_ADD, socket, &loop->event);
+  struct epoll_event ev;
+  ev.data.fd = socket;
+  ev.events = EPOLLIN | EPOLLET;
+  res = epoll_ctl(loop->efd, EPOLL_CTL_ADD, socket, &ev);
 
   if (res == -1) {
     perror("epoll ctl");

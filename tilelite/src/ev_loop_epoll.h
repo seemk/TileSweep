@@ -7,7 +7,6 @@ struct ev_loop_epoll {
   int socket;
   int efd;
   void* user = nullptr;
-  struct epoll_event event;
   struct epoll_event events[MAX_EVENTS];
   int sigfd;
 };

@@ -1,20 +1,8 @@
+#include "ev_loop_kqueue.h"
 #include <sys/socket.h>
-#include <sys/event.h>
 #include <netdb.h>
-#include <string.h>
 #include <unistd.h>
-#include "tcp.h"
 #include <stdio.h>
-
-const int MAX_EVENTS = 128;
-
-struct ev_loop_kqueue {
-  int socket;
-  int kq;
-  struct kevent ev_set;
-  struct kevent ev_list[MAX_EVENTS];
-  void* user = NULL;
-};
 
 bool ev_loop_kqueue_init(ev_loop_kqueue* loop, int socket, void* user) {
   loop->socket = socket;
@@ -28,7 +16,7 @@ bool ev_loop_kqueue_init(ev_loop_kqueue* loop, int socket, void* user) {
   return true;
 }
 
-bool ev_loop_kqueue_run(ev_loop_kqueue* loop, void (*cb)(int, const char*, int, void*)) {
+void ev_loop_kqueue_run(ev_loop_kqueue* loop, void (*cb)(int, const char*, int, void*)) {
   int kq = loop->kq;
   for (;;) {
     int n = kevent(kq, NULL, 0, loop->ev_list, 128, NULL);
@@ -69,31 +57,3 @@ bool ev_loop_kqueue_run(ev_loop_kqueue* loop, void (*cb)(int, const char*, int, 
   }
 }
 
-int main(int argc, char** argv) {
-
-  struct addrinfo hints;
-
-  memset(&hints, 0, sizeof(hints));
-  hints.ai_family = AF_UNSPEC;
-  hints.ai_socktype = SOCK_STREAM;
-  hints.ai_flags = AI_PASSIVE;
-
-  int sfd = bind_tcp("9567");
-  if (sfd == -1) {
-    return 1;
-  }
-
-  int res = listen(sfd, SOMAXCONN);
-  if (res == -1) {
-    perror("listen");
-    return 1;
-  }
-
-  ev_loop_kqueue loop;
-  ev_loop_kqueue_init(&loop, sfd, NULL);
-  ev_loop_kqueue_run(&loop, [](int fd, const char* data, int len, void* user) {
-    printf("received data: %s\n", data);
-  });
-
-  return 0;
-}

@@ -60,11 +60,13 @@ bool render_tile(tile_renderer* renderer, const tile* tile, image* image) {
 
   mapnik::box2d<double> bbox(p1.longitude, p1.latitude, p2.longitude,
                              p2.latitude);
+
   renderer->map->resize(tile->w, tile->h);
   renderer->map->zoom_to_box(bbox);
   if (renderer->map->buffer_size() == 0) {
     renderer->map->set_buffer_size(96);
   }
+
 
   mapnik::image_rgba8 buf(tile->w, tile->h);
   mapnik::agg_renderer<mapnik::image_rgba8> ren(*renderer->map, buf);

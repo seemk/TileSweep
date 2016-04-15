@@ -82,7 +82,6 @@ void tilelite::thread_job(image_db* db, const tilelite_config* conf) {
   tile_renderer renderer;
   tile_renderer_init(&renderer, mapnik_xml_path.c_str());
 
-  auto id = std::this_thread::get_id();
   while (running) {
     pending_requests_sema.wait();
 

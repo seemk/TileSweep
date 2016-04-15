@@ -4,10 +4,9 @@
 #include <unistd.h>
 #include <stdio.h>
 
-bool ev_loop_kqueue_init(ev_loop_kqueue* loop, int socket, void* user) {
+bool ev_loop_kqueue_init(ev_loop_kqueue* loop, int socket) {
   loop->socket = socket;
   loop->kq = kqueue();
-  loop->user = user;
   EV_SET(&loop->ev_set, socket, EVFILT_READ, EV_ADD, 0, 0, NULL);
   if (kevent(loop->kq, &loop->ev_set, 1, NULL, 0, NULL) == -1) {
     return false;
@@ -49,9 +48,8 @@ void ev_loop_kqueue_run(ev_loop_kqueue* loop, void (*cb)(int, const char*, int, 
           close(loop->ev_list[i].ident);
         } else {
           buf[max_len] = '\0';
+          cb(loop->ev_list[i].ident, buf, bytes_read, loop->user);
         }
-  
-        cb(loop->ev_list[i].ident, buf, max_len, loop->user);
       }
     }
   }

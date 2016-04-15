@@ -21,6 +21,8 @@ else()
   message(FATAL_ERROR "epoll or kqueue required")
 endif()
 
+add_definitions(-DLODEPNG_NO_COMPILE_CPP)
+
 add_executable(tilelite
   tilelite_server.cpp
   ${LOOP_SRC}
@@ -31,6 +33,8 @@ add_executable(tilelite
   image_db.cpp
 
   hash/MurmurHash2.cpp
+
+  lodepng/lodepng.cpp 
 
   ini/ini.c
 )

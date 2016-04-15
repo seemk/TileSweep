@@ -7,9 +7,7 @@
 #include <mapnik/well_known_srs.hpp>
 #include "image.h"
 #include "tile.h"
-
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "stb/stb_image_write.h"
+#include "lodepng/lodepng.h"
 
 const double PI = 3.14159265358979323846;
 
@@ -78,10 +76,21 @@ bool render_tile(tile_renderer* renderer, const tile* tile, image* image) {
     return false;
   }
 
+
   image->width = tile->w;
   image->height = tile->h;
-  image->data = stbi_write_png_to_mem(buf.bytes(), buf.row_size(), tile->w, tile->h, 4,
-                                      &image->len);
+
+  uint8_t* png = nullptr;
+  size_t out_size = 0;
+  uint32_t error = lodepng_encode32(&png, &out_size, buf.bytes(), image->width, image->height);
+  if (error) {
+    fprintf(stderr, "png encode error: %s\n", lodepng_error_text(error));
+    return false;
+  }
+
+  image->data = png;
+  image->len = int(out_size);
+
   return true;
 }
 

@@ -8,7 +8,7 @@ class Map;
 };
 
 struct tile_renderer {
-  mapnik::Map* map;
+  mapnik::Map* map = nullptr;
 };
 
 bool register_plugins(const char* plugins_path);

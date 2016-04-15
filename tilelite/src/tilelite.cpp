@@ -80,7 +80,10 @@ void tilelite::thread_job(image_db* db, const tilelite_config* conf) {
   std::string mapnik_xml_path = conf->at("mapnik_xml");
 
   tile_renderer renderer;
-  tile_renderer_init(&renderer, mapnik_xml_path.c_str());
+  if (!tile_renderer_init(&renderer, mapnik_xml_path.c_str())) {
+    fprintf(stderr, "failed to initialize renderer\n");
+    return;
+  }
 
   while (running) {
     pending_requests_sema.wait();

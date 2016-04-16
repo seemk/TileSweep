@@ -6,7 +6,6 @@
 struct ev_loop_kqueue {
   int socket;
   int kq;
-  struct kevent ev_set;
   struct kevent ev_list[MAX_EVENTS];
   void* user = nullptr;
 };

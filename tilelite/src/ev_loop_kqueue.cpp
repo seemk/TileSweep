@@ -8,8 +8,10 @@
 bool ev_loop_kqueue_init(ev_loop_kqueue* loop, int socket) {
   loop->socket = socket;
   loop->kq = kqueue();
-  EV_SET(&loop->ev_set, socket, EVFILT_READ, EV_ADD, 0, 0, NULL);
-  if (kevent(loop->kq, &loop->ev_set, 1, NULL, 0, NULL) == -1) {
+
+  struct kevent ev_read;
+  EV_SET(&ev_read, socket, EVFILT_READ, EV_ADD, 0, 0, NULL);
+  if (kevent(loop->kq, &ev_read, 1, NULL, 0, NULL) == -1) {
     return false;
   }
 
@@ -44,8 +46,9 @@ void ev_loop_kqueue_run(ev_loop_kqueue* loop, void (*cb)(int, const char*, int, 
           {
             if (loop->ev_list[i].flags & EV_EOF) {
               int fd = loop->ev_list[i].ident;
-              EV_SET(&loop->ev_set, fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
-              kevent(kq, &loop->ev_set, 1, NULL, 0, NULL);
+              struct kevent ev_set;
+              EV_SET(&ev_set, fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
+              kevent(kq, &ev_set, 1, NULL, 0, NULL);
               close(fd);
             } else if (loop->ev_list[i].ident == loop->socket) {
               struct sockaddr_storage addr;
@@ -54,8 +57,9 @@ void ev_loop_kqueue_run(ev_loop_kqueue* loop, void (*cb)(int, const char*, int, 
               if (fd == -1) {
                 printf("Failed to accept\n");
               } else {
-                EV_SET(&loop->ev_set, fd, EVFILT_READ, EV_ADD, 0, 0, NULL);
-                kevent(kq, &loop->ev_set, 1, NULL, 0, NULL);
+                struct kevent add_read_socket;
+                EV_SET(&add_read_socket, fd, EVFILT_READ, EV_ADD, 0, 0, NULL);
+                kevent(kq, &add_read_socket, 1, NULL, 0, NULL);
               }
             } else if (loop->ev_list[i].flags & EVFILT_READ) {
               const int max_len = 512;

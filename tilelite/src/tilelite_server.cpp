@@ -59,6 +59,7 @@ int main(int argc, char** argv) {
 
   set_defaults(&conf);
   set_signal_handler(SIGPIPE, SIG_IGN);
+  set_signal_handler(SIGINT, SIG_IGN);
 
   int sfd = bind_tcp(conf["port"].c_str());
   if (sfd == -1) {

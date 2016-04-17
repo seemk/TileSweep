@@ -30,6 +30,7 @@ add_executable(tilelite
   tilelite.cpp
   tile.cpp
   tile_renderer.cpp
+  tl_time.cpp
   image_db.cpp
 
   hash/MurmurHash2.cpp

@@ -6,6 +6,7 @@
 #include "tilelite.h"
 #include "tile_renderer.h"
 #include "tcp.h"
+#include "tl_time.h"
 
 #ifdef TILELITE_EPOLL
 #include "ev_loop_epoll.h"
@@ -85,6 +86,8 @@ int main(int argc, char** argv) {
   auto read_callback = [](int fd, const char* data, int len, void* user) {
     tilelite* ctx = (tilelite*)user;
     tile coord = parse_tile(data, len);
+    coord.request_time = tl_usec_now();
+
     ctx->queue_tile_request({fd, coord});
   };
 

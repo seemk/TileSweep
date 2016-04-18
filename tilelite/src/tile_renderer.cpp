@@ -5,9 +5,9 @@
 #include <mapnik/agg_renderer.hpp>
 #include <mapnik/image.hpp>
 #include <mapnik/well_known_srs.hpp>
+#include <mapnik/image_util.hpp>
 #include "image.h"
 #include "tile.h"
-#include "lodepng/lodepng.h"
 
 const double PI = 3.14159265358979323846;
 
@@ -76,20 +76,14 @@ bool render_tile(tile_renderer* renderer, const tile* tile, image* image) {
     return false;
   }
 
+  std::string output_png = mapnik::save_to_string(buf, "png8");
 
   image->width = tile->w;
   image->height = tile->h;
 
-  uint8_t* png = nullptr;
-  size_t out_size = 0;
-  uint32_t error = lodepng_encode32(&png, &out_size, buf.bytes(), image->width, image->height);
-  if (error) {
-    fprintf(stderr, "png encode error: %s\n", lodepng_error_text(error));
-    return false;
-  }
-
-  image->data = png;
-  image->len = int(out_size);
+  image->len = int(output_png.size());
+  image->data = (uint8_t*)calloc(1, output_png.size());
+  memcpy(image->data, output_png.data(), output_png.size());
 
   return true;
 }

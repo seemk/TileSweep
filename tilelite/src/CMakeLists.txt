@@ -35,8 +35,6 @@ add_executable(tilelite
 
   hash/MurmurHash2.cpp
 
-  lodepng/lodepng.cpp 
-
   ini/ini.c
 )
 

@@ -38,6 +38,11 @@ add_executable(tilelite
   ini/ini.c
 )
 
+add_executable(tl_message_test
+  test/tl_message_test.cpp
+  tl_message.cpp
+)
+
 target_link_libraries(
   tilelite
   sqlite

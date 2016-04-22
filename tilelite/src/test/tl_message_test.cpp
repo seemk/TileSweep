@@ -43,6 +43,7 @@ const char* i32_multi() {
   mu_assert("i32 next", tlm_next(&m) == tlm_i32);
   mu_assert("i32 read", tlm_read_i32(&m) == 598438445);
   mu_assert("i32 next end", tlm_next(&m) == tlm_none);
+  mu_assert("i32 next x2 end", tlm_next(&m) == tlm_none);
 }
 
 static const char* tests() {

@@ -23,6 +23,10 @@ endif()
 
 add_definitions(-DLODEPNG_NO_COMPILE_CPP)
 
+add_library(tl_message
+  tl_message.cpp
+)
+
 add_executable(tilelite
   tilelite_server.cpp
   ${LOOP_SRC}
@@ -40,7 +44,10 @@ add_executable(tilelite
 
 add_executable(tl_message_test
   test/tl_message_test.cpp
-  tl_message.cpp
+)
+
+target_link_libraries(tl_message_test
+  tl_message
 )
 
 target_link_libraries(

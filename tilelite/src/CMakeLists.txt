@@ -23,7 +23,11 @@ endif()
 
 add_definitions(-DLODEPNG_NO_COMPILE_CPP)
 
-add_library(tl_message
+add_library(tl_message_static STATIC
+  tl_message.cpp
+)
+
+add_library(tl_message SHARED
   tl_message.cpp
 )
 
@@ -37,6 +41,8 @@ add_executable(tilelite
   tl_time.cpp
   image_db.cpp
 
+  cmp.c
+
   hash/MurmurHash2.cpp
 
   ini/ini.c
@@ -47,7 +53,7 @@ add_executable(tl_message_test
 )
 
 target_link_libraries(tl_message_test
-  tl_message
+  tl_message_static
 )
 
 target_link_libraries(

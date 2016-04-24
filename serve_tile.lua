@@ -10,6 +10,8 @@ end
 local w = ngx.var.w or 256
 local h = ngx.var.h or 256
 
+local packed = mpack.pack({ type = 1, z = ngx.var.z, x = ngx.var.x, y = ngx.var.y, w = w, h = h })
+
 query = string.format("%d,%d,%d,%d,%d", ngx.var.z, ngx.var.x, ngx.var.y, w, h)
 ok, err = sock:send(query)
 

@@ -7,6 +7,7 @@
 #include "tile_renderer.h"
 #include "tcp.h"
 #include "tl_time.h"
+#include "cmp.h"
 
 #ifdef TILELITE_EPOLL
 #include "ev_loop_epoll.h"
@@ -49,6 +50,29 @@ void set_defaults(tilelite_config* conf) {
   set_key("port", "9567");
 }
 
+bool read_request(const char* data, int len) {
+  cmp_ctx_t mpack;
+
+  auto mpack_read = [](cmp_ctx_t* ctx, void* data, size_t limit) {
+    printf("mpack read %lu\n", limit);
+    return true;
+  };
+
+  auto mpack_write = [](cmp_ctx_t*, const void*, size_t count) {
+    printf("mpack write %lu\n", count);
+    return count; 
+  };
+
+  cmp_init(&mpack, NULL, mpack_read, mpack_write);
+
+  uint32_t map_size;
+  if (!cmp_read_map(&mpack, &map_size)) {
+    printf("Failed to read map\n");
+    return false;
+  }
+
+  return false;
+}
 
 int main(int argc, char** argv) {
   tilelite_config conf;
@@ -85,6 +109,9 @@ int main(int argc, char** argv) {
 
   auto read_callback = [](int fd, const char* data, int len, void* user) {
     tilelite* ctx = (tilelite*)user;
+
+    bool res = read_request(data, len);
+
     tile coord = parse_tile(data, len);
     coord.request_time = tl_usec_now();
 

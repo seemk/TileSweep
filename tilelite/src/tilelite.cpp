@@ -31,8 +31,8 @@ void send_tile(int fd, const image* img, const tile* t) {
 
   int64_t processing_time_us = tl_usec_now() - t->request_time;
   if (processing_time_us > 1000) {
-    printf("[%d, %d, %d, %d, %d] (%d bytes) | %.2f ms\n", t->w, t->h, t->z, t->x,
-           t->y, bytes_to_send, double(processing_time_us) / 1000.0);
+    printf("[%d, %d, %d, %d, %d] (%d bytes) | %.2f ms\n", t->w, t->h, t->z,
+           t->x, t->y, bytes_to_send, double(processing_time_us) / 1000.0);
   } else {
     printf("[%d, %d, %d, %d, %d] (%d bytes) | %ld us\n", t->w, t->h, t->z, t->x,
            t->y, bytes_to_send, processing_time_us);

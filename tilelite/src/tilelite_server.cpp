@@ -33,7 +33,7 @@ int ini_parse_callback(void* user, const char* section, const char* name,
     register_plugins(value);
   } else if (strcmp(name, "fonts") == 0) {
     register_fonts(value);
-  } else { 
+  } else {
     (*conf)[name] = value;
   }
 
@@ -55,19 +55,79 @@ struct byte_buf {
   int len;
 };
 
-bool read_request(const char* data, int len) {
+enum message_type : uint64_t {
+  mt_invalid = 0,
+  mt_tile_request = 1
+};
+
+bool read_request(const char* data, int len, tile* tile_req) {
   msgpack_zone mempool;
   msgpack_zone_init(&mempool, 2048);
 
   msgpack_object request;
-  msgpack_unpack(data, len, NULL, &mempool, &request);
 
-  msgpack_object_print(stdout, request);
-  printf("\n");
+  if (msgpack_unpack(data, len, NULL, &mempool, &request) !=
+      MSGPACK_UNPACK_SUCCESS) {
+    printf("failed to unpack request\n");
+    msgpack_zone_destroy(&mempool);
+    return false;
+  }
+
+  if (request.type != MSGPACK_OBJECT_MAP) {
+    printf("invalid request type\n");
+    msgpack_zone_destroy(&mempool);
+    return false;
+  }
+
+  size_t num_elements = request.via.map.size;
+
+  if (num_elements < 2) {
+    printf("invalid key count\n");
+    msgpack_zone_destroy(&mempool);
+    return false;
+  }
+
+  message_type mtype = mt_invalid;
+  msgpack_object_map content = { 0 };
+  for (size_t i = 0; i < num_elements; i++) {
+    msgpack_object_kv* kv = &request.via.map.ptr[i];
+    if (kv->key.type != MSGPACK_OBJECT_STR) continue;
+
+    msgpack_object_str key = kv->key.via.str; 
+    if (strncmp("type", key.ptr, key.size) == 0) {
+      mtype = message_type(kv->val.via.u64);
+    } else if (strncmp("content", key.ptr, key.size) == 0) {
+      content = kv->val.via.map;
+    }
+  }
+
+  if (mtype == mt_invalid || content.size == 0) {
+    printf("invalid type/content\n");
+    msgpack_zone_destroy(&mempool);
+    return false;
+  }
+
+  for (size_t i = 0; i < content.size; i++) {
+    msgpack_object_kv kv = content.ptr[i];
+    if (kv.key.type != MSGPACK_OBJECT_STR) continue;
+
+    msgpack_object_str key = kv.key.via.str; 
+    if (strncmp("x", key.ptr, key.size) == 0) {
+      tile_req->x = int(kv.val.via.i64);
+    } else if (strncmp("y", key.ptr, key.size) == 0) {
+      tile_req->y = int(kv.val.via.i64);
+    } else if (strncmp("z", key.ptr, key.size) == 0) {
+      tile_req->z = int(kv.val.via.i64);
+    } else if (strncmp("w", key.ptr, key.size) == 0) {
+      tile_req->w = int(kv.val.via.i64);
+    } else if (strncmp("h", key.ptr, key.size) == 0) {
+      tile_req->h = int(kv.val.via.i64);
+    }
+  }
 
   msgpack_zone_destroy(&mempool);
 
-  return false;
+  return true;
 }
 
 int main(int argc, char** argv) {
@@ -106,12 +166,12 @@ int main(int argc, char** argv) {
   auto read_callback = [](int fd, const char* data, int len, void* user) {
     tilelite* ctx = (tilelite*)user;
 
-    bool res = read_request(data, len);
-
-    tile coord = parse_tile(data, len);
-    coord.request_time = tl_usec_now();
-
-    ctx->queue_tile_request({fd, coord});
+    tile t = { 0 };
+    bool valid = read_request(data, len, &t);
+    if (valid) {
+      t.request_time = tl_usec_now();
+      ctx->queue_tile_request({fd, t});
+    }
   };
 
 #ifdef TILELITE_EPOLL

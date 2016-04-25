@@ -7,7 +7,7 @@
 #include "tile_renderer.h"
 #include "tcp.h"
 #include "tl_time.h"
-#include "cmp.h"
+#include "msgpack.h"
 
 #ifdef TILELITE_EPOLL
 #include "ev_loop_epoll.h"
@@ -50,26 +50,22 @@ void set_defaults(tilelite_config* conf) {
   set_key("port", "9567");
 }
 
+struct byte_buf {
+  const char* data;
+  int len;
+};
+
 bool read_request(const char* data, int len) {
-  cmp_ctx_t mpack;
+  msgpack_zone mempool;
+  msgpack_zone_init(&mempool, 2048);
 
-  auto mpack_read = [](cmp_ctx_t* ctx, void* data, size_t limit) {
-    printf("mpack read %lu\n", limit);
-    return true;
-  };
+  msgpack_object request;
+  msgpack_unpack(data, len, NULL, &mempool, &request);
 
-  auto mpack_write = [](cmp_ctx_t*, const void*, size_t count) {
-    printf("mpack write %lu\n", count);
-    return count; 
-  };
+  msgpack_object_print(stdout, request);
+  printf("\n");
 
-  cmp_init(&mpack, NULL, mpack_read, mpack_write);
-
-  uint32_t map_size;
-  if (!cmp_read_map(&mpack, &map_size)) {
-    printf("Failed to read map\n");
-    return false;
-  }
+  msgpack_zone_destroy(&mempool);
 
   return false;
 }

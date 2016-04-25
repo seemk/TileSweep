@@ -23,20 +23,11 @@ endif()
 
 add_definitions(-DLODEPNG_NO_COMPILE_CPP)
 
-add_library(tl_message_static STATIC
-  tl_message.cpp
-)
-
-add_library(tl_message SHARED
-  tl_message.cpp
-)
-
 add_executable(tilelite
   tilelite_server.cpp
   ${LOOP_SRC}
   tcp.cpp
   tilelite.cpp
-  tile.cpp
   tile_renderer.cpp
   tl_time.cpp
   image_db.cpp
@@ -44,14 +35,6 @@ add_executable(tilelite
   hash/MurmurHash2.cpp
 
   ini/ini.c
-)
-
-add_executable(tl_message_test
-  test/tl_message_test.cpp
-)
-
-target_link_libraries(tl_message_test
-  tl_message_static
 )
 
 target_link_libraries(

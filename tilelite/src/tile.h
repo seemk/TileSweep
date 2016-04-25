@@ -14,5 +14,3 @@ struct tile {
     return (uint64_t(z) << 40) | (uint64_t(x) << 20) | uint64_t(y);
   }
 };
-
-tile parse_tile(const char* s, int len);

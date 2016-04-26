@@ -56,7 +56,7 @@ bool ev_loop_epoll_init(ev_loop_epoll* loop, int socket) {
   sigset_t signals;
   sigemptyset(&signals);
   sigaddset(&signals, SIGINT);
-  sigprocmask(SIG_BLOCK, &signals, NULL);
+  sigprocmask(SIG_BLOCK, &signals, nullptr);
 
   int sig_fd = signalfd(-1, &signals, SFD_NONBLOCK);
 
@@ -78,10 +78,11 @@ bool ev_loop_epoll_init(ev_loop_epoll* loop, int socket) {
   return true;
 };
 
-void ev_loop_epoll_run(ev_loop_epoll* loop, void (*cb)(int, const char*, int, void*)) {
+void ev_loop_epoll_run(ev_loop_epoll* loop,
+                       void (*cb)(int, const char*, int, void*)) {
   int efd = loop->efd;
 
-  for(;;) {
+  for (;;) {
     int n = epoll_wait(loop->efd, loop->events, MAX_EVENTS, -1);
 
     for (int i = 0; i < n; i++) {
@@ -106,7 +107,7 @@ void ev_loop_epoll_run(ev_loop_epoll* loop, void (*cb)(int, const char*, int, vo
         close(loop->events[i].data.fd);
         continue;
       } else if (loop->socket == ev->data.fd) {
-        for(;;) {
+        for (;;) {
           struct sockaddr in_addr;
           socklen_t in_len = sizeof(in_addr);
           int client_fd = accept(loop->socket, &in_addr, &in_len);
@@ -122,7 +123,7 @@ void ev_loop_epoll_run(ev_loop_epoll* loop, void (*cb)(int, const char*, int, vo
 
           char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
           int res = getnameinfo(&in_addr, in_len, hbuf, sizeof(hbuf), sbuf,
-                            sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
+                                sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
 
           if (res == 0) {
             printf("connection from %s:%s\n", hbuf, sbuf);
@@ -159,7 +160,7 @@ void ev_loop_epoll_run(ev_loop_epoll* loop, void (*cb)(int, const char*, int, vo
             break;
           } else if (num_bytes == 0) {
             printf("Client on FD %d closed\n", ev->data.fd);
-            close(ev->data.fd); 
+            close(ev->data.fd);
             break;
           }
 
@@ -171,4 +172,3 @@ void ev_loop_epoll_run(ev_loop_epoll* loop, void (*cb)(int, const char*, int, vo
     }
   }
 }
-

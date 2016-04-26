@@ -10,14 +10,14 @@ bool ev_loop_kqueue_init(ev_loop_kqueue* loop, int socket) {
   loop->kq = kqueue();
 
   struct kevent ev_read;
-  EV_SET(&ev_read, socket, EVFILT_READ, EV_ADD, 0, 0, NULL);
-  if (kevent(loop->kq, &ev_read, 1, NULL, 0, NULL) == -1) {
+  EV_SET(&ev_read, socket, EVFILT_READ, EV_ADD, 0, 0, nullptr);
+  if (kevent(loop->kq, &ev_read, 1, nullptr, 0, nullptr) == -1) {
     return false;
   }
 
   struct kevent sig_ev;
-  EV_SET(&sig_ev, SIGINT, EVFILT_SIGNAL, EV_ADD, 0, 0, NULL);
-  if (kevent(loop->kq, &sig_ev, 1, NULL, 0, NULL) == -1) {
+  EV_SET(&sig_ev, SIGINT, EVFILT_SIGNAL, EV_ADD, 0, 0, nullptr);
+  if (kevent(loop->kq, &sig_ev, 1, nullptr, 0, nullptr) == -1) {
     return false;
   }
 
@@ -27,7 +27,7 @@ bool ev_loop_kqueue_init(ev_loop_kqueue* loop, int socket) {
 void ev_loop_kqueue_run(ev_loop_kqueue* loop, void (*cb)(int, const char*, int, void*)) {
   int kq = loop->kq;
   for (;;) {
-    int n = kevent(kq, NULL, 0, loop->ev_list, 128, NULL);
+    int n = kevent(kq, nullptr, 0, loop->ev_list, 128, nullptr);
     if (n < 1) {
       printf("kevent error\n");
     }
@@ -47,8 +47,8 @@ void ev_loop_kqueue_run(ev_loop_kqueue* loop, void (*cb)(int, const char*, int, 
             if (loop->ev_list[i].flags & EV_EOF) {
               int fd = loop->ev_list[i].ident;
               struct kevent ev_set;
-              EV_SET(&ev_set, fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
-              kevent(kq, &ev_set, 1, NULL, 0, NULL);
+              EV_SET(&ev_set, fd, EVFILT_READ, EV_DELETE, 0, 0, nullptr);
+              kevent(kq, &ev_set, 1, nullptr, 0, nullptr);
               close(fd);
             } else if (loop->ev_list[i].ident == loop->socket) {
               struct sockaddr_storage addr;
@@ -58,8 +58,8 @@ void ev_loop_kqueue_run(ev_loop_kqueue* loop, void (*cb)(int, const char*, int, 
                 printf("Failed to accept\n");
               } else {
                 struct kevent add_read_socket;
-                EV_SET(&add_read_socket, fd, EVFILT_READ, EV_ADD, 0, 0, NULL);
-                kevent(kq, &add_read_socket, 1, NULL, 0, NULL);
+                EV_SET(&add_read_socket, fd, EVFILT_READ, EV_ADD, 0, 0, nullptr);
+                kevent(kq, &add_read_socket, 1, nullptr, 0, nullptr);
               }
             } else if (loop->ev_list[i].flags & EVFILT_READ) {
               const int max_len = 512;

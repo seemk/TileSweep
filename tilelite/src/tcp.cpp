@@ -15,7 +15,7 @@ int bind_tcp(const char* port) {
   hints.ai_flags = AI_PASSIVE;
 
   struct addrinfo* results;
-  int rv = getaddrinfo(NULL, port, &hints, &results);
+  int rv = getaddrinfo(nullptr, port, &hints, &results);
 
   if (rv != 0) {
     fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
@@ -25,7 +25,7 @@ int bind_tcp(const char* port) {
   int fd = -1;
 
   struct addrinfo* result;
-  for (result = results; result != NULL; result = result->ai_next) {
+  for (result = results; result != nullptr; result = result->ai_next) {
     fd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
     if (fd == -1) {
       continue;
@@ -43,7 +43,7 @@ int bind_tcp(const char* port) {
     close(fd);
   }
 
-  if (result == NULL) {
+  if (result == nullptr) {
     fprintf(stderr, "failed to bind socket\n");
     return -1;
   }

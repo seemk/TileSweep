@@ -32,7 +32,7 @@ bool tile_renderer_init(tile_renderer* renderer, const char* mapnik_xml_path) {
   } catch (std::exception& e) {
     fprintf(stderr, "mapnik load error: %s\n", e.what());
     delete renderer->map;
-    renderer->map = NULL;
+    renderer->map = nullptr;
     return false;
   }
 

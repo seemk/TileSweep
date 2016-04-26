@@ -22,7 +22,7 @@ void set_signal_handler(int sig_num, void (*handler)(int sig_num)) {
 
   sigemptyset(&action.sa_mask);
   action.sa_handler = handler;
-  sigaction(sig_num, &action, NULL);
+  sigaction(sig_num, &action, nullptr);
 }
 
 int ini_parse_callback(void* user, const char* section, const char* name,
@@ -62,7 +62,7 @@ bool read_request(const char* data, int len, tile* tile_req) {
 
   msgpack_object request;
 
-  if (msgpack_unpack(data, len, NULL, &mempool, &request) !=
+  if (msgpack_unpack(data, len, nullptr, &mempool, &request) !=
       MSGPACK_UNPACK_SUCCESS) {
     printf("failed to unpack request\n");
     msgpack_zone_destroy(&mempool);
@@ -84,12 +84,12 @@ bool read_request(const char* data, int len, tile* tile_req) {
   }
 
   message_type mtype = mt_invalid;
-  msgpack_object_map content = { 0 };
+  msgpack_object_map content = {0};
   for (size_t i = 0; i < num_elements; i++) {
     msgpack_object_kv* kv = &request.via.map.ptr[i];
     if (kv->key.type != MSGPACK_OBJECT_STR) continue;
 
-    msgpack_object_str key = kv->key.via.str; 
+    msgpack_object_str key = kv->key.via.str;
     if (strncmp("type", key.ptr, key.size) == 0) {
       mtype = message_type(kv->val.via.u64);
     } else if (strncmp("content", key.ptr, key.size) == 0) {
@@ -106,7 +106,7 @@ bool read_request(const char* data, int len, tile* tile_req) {
       msgpack_object_kv kv = content.ptr[i];
       if (kv.key.type != MSGPACK_OBJECT_STR) continue;
 
-      msgpack_object_str key = kv.key.via.str; 
+      msgpack_object_str key = kv.key.via.str;
       if (strncmp("x", key.ptr, key.size) == 0) {
         tile_req->x = int(kv.val.via.i64);
       } else if (strncmp("y", key.ptr, key.size) == 0) {
@@ -165,7 +165,7 @@ int main(int argc, char** argv) {
   auto read_callback = [](int fd, const char* data, int len, void* user) {
     tilelite* ctx = (tilelite*)user;
 
-    tile t = { 0 };
+    tile t = {0};
     bool valid = read_request(data, len, &t);
     if (valid) {
       t.request_time = tl_usec_now();

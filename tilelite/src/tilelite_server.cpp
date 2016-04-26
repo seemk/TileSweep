@@ -50,14 +50,10 @@ void set_defaults(tilelite_config* conf) {
   set_key("port", "9567");
 }
 
-struct byte_buf {
-  const char* data;
-  int len;
-};
-
 enum message_type : uint64_t {
   mt_invalid = 0,
-  mt_tile_request = 1
+  mt_tile_request = 1,
+  mt_prerender = 2
 };
 
 bool read_request(const char* data, int len, tile* tile_req) {
@@ -105,24 +101,27 @@ bool read_request(const char* data, int len, tile* tile_req) {
     printf("invalid type/content\n");
     msgpack_zone_destroy(&mempool);
     return false;
-  }
+  } else if (mtype == mt_tile_request) {
+    for (size_t i = 0; i < content.size; i++) {
+      msgpack_object_kv kv = content.ptr[i];
+      if (kv.key.type != MSGPACK_OBJECT_STR) continue;
 
-  for (size_t i = 0; i < content.size; i++) {
-    msgpack_object_kv kv = content.ptr[i];
-    if (kv.key.type != MSGPACK_OBJECT_STR) continue;
-
-    msgpack_object_str key = kv.key.via.str; 
-    if (strncmp("x", key.ptr, key.size) == 0) {
-      tile_req->x = int(kv.val.via.i64);
-    } else if (strncmp("y", key.ptr, key.size) == 0) {
-      tile_req->y = int(kv.val.via.i64);
-    } else if (strncmp("z", key.ptr, key.size) == 0) {
-      tile_req->z = int(kv.val.via.i64);
-    } else if (strncmp("w", key.ptr, key.size) == 0) {
-      tile_req->w = int(kv.val.via.i64);
-    } else if (strncmp("h", key.ptr, key.size) == 0) {
-      tile_req->h = int(kv.val.via.i64);
+      msgpack_object_str key = kv.key.via.str; 
+      if (strncmp("x", key.ptr, key.size) == 0) {
+        tile_req->x = int(kv.val.via.i64);
+      } else if (strncmp("y", key.ptr, key.size) == 0) {
+        tile_req->y = int(kv.val.via.i64);
+      } else if (strncmp("z", key.ptr, key.size) == 0) {
+        tile_req->z = int(kv.val.via.i64);
+      } else if (strncmp("w", key.ptr, key.size) == 0) {
+        tile_req->w = int(kv.val.via.i64);
+      } else if (strncmp("h", key.ptr, key.size) == 0) {
+        tile_req->h = int(kv.val.via.i64);
+      }
     }
+  } else {
+    msgpack_zone_destroy(&mempool);
+    return false;
   }
 
   msgpack_zone_destroy(&mempool);

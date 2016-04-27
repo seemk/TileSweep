@@ -7,7 +7,7 @@
 #include <mapnik/well_known_srs.hpp>
 #include <mapnik/image_util.hpp>
 #include "image.h"
-#include "tile.h"
+#include "tl_request.h"
 
 const double PI = 3.14159265358979323846;
 
@@ -49,7 +49,7 @@ latlon xyz_latlon(double x, double y, double z) {
   return res;
 }
 
-bool render_tile(tile_renderer* renderer, const tile* tile, image* image) {
+bool render_tile(tile_renderer* renderer, const tl_tile* tile, image* image) {
   latlon p1 = xyz_latlon(double(tile->x), double(tile->y), double(tile->z));
   latlon p2 = xyz_latlon(double(tile->x + 1), double(tile->y + 1), double(tile->z));
 

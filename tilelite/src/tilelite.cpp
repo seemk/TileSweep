@@ -7,7 +7,7 @@
 
 const uint64_t HASH_SEED = 0x1F0D3804;
 
-void send_tile(int fd, const image* img, const tile* t) {
+void send_image(int fd, const image* img) {
   int header_bytes_sent = send(fd, &img->len, sizeof(int), 0);
   if (header_bytes_sent == -1) {
     perror("failure sending image size: ");
@@ -27,15 +27,6 @@ void send_tile(int fd, const image* img, const tile* t) {
     }
 
     bytes_left -= bytes_sent;
-  }
-
-  int64_t processing_time_us = tl_usec_now() - t->request_time;
-  if (processing_time_us > 1000) {
-    printf("[%d, %d, %d, %d, %d] (%d bytes) | %.2f ms\n", t->w, t->h, t->z,
-           t->x, t->y, bytes_to_send, double(processing_time_us) / 1000.0);
-  } else {
-    printf("[%d, %d, %d, %d, %d] (%d bytes) | %ld us\n", t->w, t->h, t->z, t->x,
-           t->y, bytes_to_send, processing_time_us);
   }
 }
 
@@ -59,7 +50,7 @@ tilelite::tilelite(const tilelite_config* conf) : running(true) {
       std::thread([=] { this->image_write_job(write_db, conf); });
 }
 
-void tilelite::queue_tile_request(tile_request req) {
+void tilelite::queue_tile_request(tl_request req) {
   pending_requests.enqueue(req);
   pending_requests_sema.signal(1);
 }
@@ -97,21 +88,37 @@ void tilelite::thread_job(image_db* db, const tilelite_config* conf) {
   while (running) {
     pending_requests_sema.wait();
 
-    tile_request req;
+    tl_request req;
     while (pending_requests.try_dequeue(req)) {
-      tile t = req.req_tile;
-      uint64_t pos_hash = t.hash();
-      image img;
-      bool existing = image_db_fetch(db, pos_hash, t.w, t.h, &img);
-      if (existing) {
-        send_tile(req.sock_fd, &img, &t);
-        free(img.data);
-      } else {
-        if (render_tile(&renderer, &req.req_tile, &img)) {
-          send_tile(req.sock_fd, &img, &t);
-          uint64_t image_hash = MurmurHash2(img.data, img.len, HASH_SEED);
-          queue_image_write({img, pos_hash, image_hash});
-        }
+      switch (req.type) {
+        case rq_tile:
+          {
+            tl_tile t = req.as.tile;
+            uint64_t pos_hash = t.hash();
+            image img;
+            bool existing = image_db_fetch(db, pos_hash, t.w, t.h, &img);
+            if (existing) {
+              send_image(req.client_fd, &img);
+              int64_t processing_time_us = tl_usec_now() - req.request_time;
+              if (processing_time_us > 1000) {
+                printf("[%d, %d, %d, %d, %d] (%d bytes) | %.2f ms\n", t.w, t.h, t.z,
+                       t.x, t.y, img.len, double(processing_time_us) / 1000.0);
+              } else {
+                printf("[%d, %d, %d, %d, %d] (%d bytes) | %ld us\n", t.w, t.h, t.z, t.x,
+                       t.y, img.len, processing_time_us);
+              }
+              free(img.data);
+            } else {
+              if (render_tile(&renderer, &t, &img)) {
+                send_image(req.client_fd, &img);
+                uint64_t image_hash = MurmurHash2(img.data, img.len, HASH_SEED);
+                queue_image_write({img, pos_hash, image_hash});
+              }
+            }
+          }
+          break;
+        default:
+          break;
       }
     }
   }

@@ -50,29 +50,24 @@ void set_defaults(tilelite_config* conf) {
   set_key("port", "9567");
 }
 
-enum message_type : uint64_t {
-  mt_invalid = 0,
-  mt_tile_request = 1,
-  mt_prerender = 2
-};
-
-bool read_request(const char* data, int len, tile* tile_req) {
+tl_request read_request(const char* data, int len) {
   msgpack_zone mempool;
   msgpack_zone_init(&mempool, 2048);
 
   msgpack_object request;
 
+  tl_request req = {0};
   if (msgpack_unpack(data, len, nullptr, &mempool, &request) !=
       MSGPACK_UNPACK_SUCCESS) {
     printf("failed to unpack request\n");
     msgpack_zone_destroy(&mempool);
-    return false;
+    return req;
   }
 
   if (request.type != MSGPACK_OBJECT_MAP) {
     printf("invalid request type\n");
     msgpack_zone_destroy(&mempool);
-    return false;
+    return req;
   }
 
   size_t num_elements = request.via.map.size;
@@ -80,10 +75,9 @@ bool read_request(const char* data, int len, tile* tile_req) {
   if (num_elements < 2) {
     printf("invalid key count\n");
     msgpack_zone_destroy(&mempool);
-    return false;
+    return req;
   }
 
-  message_type mtype = mt_invalid;
   msgpack_object_map content = {0};
   for (size_t i = 0; i < num_elements; i++) {
     msgpack_object_kv* kv = &request.via.map.ptr[i];
@@ -91,42 +85,42 @@ bool read_request(const char* data, int len, tile* tile_req) {
 
     msgpack_object_str key = kv->key.via.str;
     if (strncmp("type", key.ptr, key.size) == 0) {
-      mtype = message_type(kv->val.via.u64);
+      req.type = tl_request_type(kv->val.via.u64);
     } else if (strncmp("content", key.ptr, key.size) == 0) {
       content = kv->val.via.map;
     }
   }
 
-  if (mtype == mt_invalid || content.size == 0) {
+  if (req.type == rq_invalid || req.type >= RQ_COUNT || content.size == 0) {
+    req.type = rq_invalid;
     printf("invalid type/content\n");
     msgpack_zone_destroy(&mempool);
-    return false;
-  } else if (mtype == mt_tile_request) {
+    return req;
+  }
+
+  if (req.type == rq_tile) {
     for (size_t i = 0; i < content.size; i++) {
       msgpack_object_kv kv = content.ptr[i];
       if (kv.key.type != MSGPACK_OBJECT_STR) continue;
 
       msgpack_object_str key = kv.key.via.str;
       if (strncmp("x", key.ptr, key.size) == 0) {
-        tile_req->x = int(kv.val.via.i64);
+        req.as.tile.x = int(kv.val.via.i64);
       } else if (strncmp("y", key.ptr, key.size) == 0) {
-        tile_req->y = int(kv.val.via.i64);
+        req.as.tile.y = int(kv.val.via.i64);
       } else if (strncmp("z", key.ptr, key.size) == 0) {
-        tile_req->z = int(kv.val.via.i64);
+        req.as.tile.z = int(kv.val.via.i64);
       } else if (strncmp("w", key.ptr, key.size) == 0) {
-        tile_req->w = int(kv.val.via.i64);
+        req.as.tile.w = int(kv.val.via.i64);
       } else if (strncmp("h", key.ptr, key.size) == 0) {
-        tile_req->h = int(kv.val.via.i64);
+        req.as.tile.h = int(kv.val.via.i64);
       }
     }
-  } else {
-    msgpack_zone_destroy(&mempool);
-    return false;
   }
 
   msgpack_zone_destroy(&mempool);
 
-  return true;
+  return req;
 }
 
 int main(int argc, char** argv) {
@@ -165,11 +159,11 @@ int main(int argc, char** argv) {
   auto read_callback = [](int fd, const char* data, int len, void* user) {
     tilelite* ctx = (tilelite*)user;
 
-    tile t = {0};
-    bool valid = read_request(data, len, &t);
-    if (valid) {
-      t.request_time = tl_usec_now();
-      ctx->queue_tile_request({fd, t});
+    tl_request req = read_request(data, len);
+    if (req.type != rq_invalid) {
+      req.client_fd = fd;
+      req.request_time = tl_usec_now();
+      ctx->queue_tile_request(req);
     }
   };
 

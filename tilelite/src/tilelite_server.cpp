@@ -7,13 +7,15 @@
 #include "tile_renderer.h"
 #include "tcp.h"
 #include "tl_time.h"
-#include "msgpack.h"
+#include <rapidjson/document.h>
 
 #ifdef TILELITE_EPOLL
 #include "ev_loop_epoll.h"
 #elif TILELITE_KQUEUE
 #include "ev_loop_kqueue.h"
 #endif
+
+namespace rj = rapidjson;
 
 void set_signal_handler(int sig_num, void (*handler)(int sig_num)) {
   struct sigaction action;
@@ -51,74 +53,38 @@ void set_defaults(tilelite_config* conf) {
 }
 
 tl_request read_request(const char* data, int len) {
-  msgpack_zone mempool;
-  msgpack_zone_init(&mempool, 2048);
-
-  msgpack_object request;
-
   tl_request req = {0};
-  if (msgpack_unpack(data, len, nullptr, &mempool, &request) !=
-      MSGPACK_UNPACK_SUCCESS) {
-    printf("failed to unpack request\n");
-    msgpack_zone_destroy(&mempool);
+  rj::Document doc;
+  doc.Parse(data, len);
+
+  if (doc.HasParseError() || !doc.IsObject()) {
+    printf("invalid JSON\n");
     return req;
   }
 
-  if (request.type != MSGPACK_OBJECT_MAP) {
+  if (!(doc.HasMember("type") && doc.HasMember("content") &&
+        doc["type"].IsNumber() && doc["content"].IsObject())) {
+    printf("invalid request\n");
+    return req;
+  }
+
+  req.type = tl_request_type(doc["type"].GetUint64());
+
+  if (req.type == rq_invalid || req.type >= RQ_COUNT) {
     printf("invalid request type\n");
-    msgpack_zone_destroy(&mempool);
-    return req;
-  }
-
-  size_t num_elements = request.via.map.size;
-
-  if (num_elements < 2) {
-    printf("invalid key count\n");
-    msgpack_zone_destroy(&mempool);
-    return req;
-  }
-
-  msgpack_object_map content = {0};
-  for (size_t i = 0; i < num_elements; i++) {
-    msgpack_object_kv* kv = &request.via.map.ptr[i];
-    if (kv->key.type != MSGPACK_OBJECT_STR) continue;
-
-    msgpack_object_str key = kv->key.via.str;
-    if (strncmp("type", key.ptr, key.size) == 0) {
-      req.type = tl_request_type(kv->val.via.u64);
-    } else if (strncmp("content", key.ptr, key.size) == 0) {
-      content = kv->val.via.map;
-    }
-  }
-
-  if (req.type == rq_invalid || req.type >= RQ_COUNT || content.size == 0) {
     req.type = rq_invalid;
-    printf("invalid type/content\n");
-    msgpack_zone_destroy(&mempool);
     return req;
   }
 
   if (req.type == rq_tile) {
-    for (size_t i = 0; i < content.size; i++) {
-      msgpack_object_kv kv = content.ptr[i];
-      if (kv.key.type != MSGPACK_OBJECT_STR) continue;
-
-      msgpack_object_str key = kv.key.via.str;
-      if (strncmp("x", key.ptr, key.size) == 0) {
-        req.as.tile.x = int(kv.val.via.i64);
-      } else if (strncmp("y", key.ptr, key.size) == 0) {
-        req.as.tile.y = int(kv.val.via.i64);
-      } else if (strncmp("z", key.ptr, key.size) == 0) {
-        req.as.tile.z = int(kv.val.via.i64);
-      } else if (strncmp("w", key.ptr, key.size) == 0) {
-        req.as.tile.w = int(kv.val.via.i64);
-      } else if (strncmp("h", key.ptr, key.size) == 0) {
-        req.as.tile.h = int(kv.val.via.i64);
-      }
-    }
+    rj::Value& content = doc["content"];
+    tl_tile* tile = &req.as.tile;
+    tile->x = content["x"].GetInt();
+    tile->y = content["y"].GetInt();
+    tile->z = content["z"].GetInt();
+    tile->w = content["w"].GetInt();
+    tile->h = content["h"].GetInt();
   }
-
-  msgpack_zone_destroy(&mempool);
 
   return req;
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "common.h"
 
 enum tl_request_type : uint64_t {
   rq_invalid = 0,
@@ -22,8 +23,15 @@ struct tl_tile {
   }
 };
 
-struct tl_prerender {
+struct tl_point {
+  double x;
+  double y;
+};
 
+struct tl_prerender {
+  tl_point points[MAX_PRERENDER_COORDS];
+  int w;
+  int h;
 };
 
 union tl_request_union {

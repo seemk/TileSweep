@@ -10,7 +10,7 @@ end
 local w = ngx.var.w or 256
 local h = ngx.var.h or 256
 
-local query = mpack.pack({
+local query = {
   type = 1,
   content = {
     z = tonumber(ngx.var.z),
@@ -19,8 +19,8 @@ local query = mpack.pack({
     w = tonumber(w),
     h = tonumber(h) 
   }
-})
-ok, err = sock:send(query)
+}
+ok, err = sock:send(cjson.encode(query))
 
 local size_data, err = sock:receive(4)
 if not size_data then

@@ -33,7 +33,6 @@ add_executable(tilelite
   image_db.cpp
 
   hash/MurmurHash2.cpp
-
   ini/ini.c
 )
 
@@ -42,7 +41,6 @@ target_link_libraries(
   sqlite
   mapnik
   icuuc
-  msgpackc-static
   ${CMAKE_THREAD_LIBS_INIT}
   ${CMAKE_DL_LIBS}
 )

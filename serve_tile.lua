@@ -2,7 +2,7 @@ local bit = require("bit")
 
 local sock = ngx.socket.tcp();
 sock:settimeout(60000)
-local ok, err = sock:connect("127.0.0.1", 9567)
+local ok, err = sock:connect(tile_sv_host, tile_sv_port)
 if not ok then
   ngx.exit(ngx.HTTP_REQUEST_TIMEOUT)
 end

@@ -10,6 +10,7 @@ add_subdirectory("third_party/msgpack-1.4.1")
 
 include_directories(SYSTEM
   "third_party/msgpack-1.4.1/include"
+  "third_party/rapidjson/include"
 )
 
 add_subdirectory(src)

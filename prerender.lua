@@ -1,7 +1,6 @@
 ngx.req.read_body()
 local content = ngx.req.get_body_data()
 
--- Temporary
 local payload = cjson.decode(content)
 
 if not payload then
@@ -10,7 +9,7 @@ end
 
 local prerender_req = {
   type = 2,
-  content = cjson.encode(payload)
+  content = payload
 }
 
 local sock = ngx.socket.tcp()
@@ -20,11 +19,9 @@ if not ok then
   ngx.exit(ngx.HTTP_REQUEST_TIMEOUT)
 end
 
-ok, err = sock:send(query)
-sock:setkeepalive()
+ngx.say(cjson.encode(prerender_req))
 
-if not ok then
-  
-end
+ok, err = sock:send(cjson.encode(prerender_req))
+sock:setkeepalive()
 
 ngx.exit(ngx.HTTP_OK)

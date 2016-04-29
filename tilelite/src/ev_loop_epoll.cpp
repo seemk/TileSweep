@@ -148,10 +148,12 @@ void ev_loop_epoll_run(ev_loop_epoll* loop,
           }
         }
       } else {
-        const int read_buf_len = 512;
+        const int read_buf_len = 4096;
+        int total_read = 0;
+        int remain = read_buf_len;
         char buf[read_buf_len + 1];
         for (;;) {
-          ssize_t num_bytes = read(ev->data.fd, buf, read_buf_len);
+          ssize_t num_bytes = read(ev->data.fd, buf + total_read, remain);
           if (num_bytes == -1) {
             if (errno != EAGAIN) {
               perror("fd read");
@@ -162,12 +164,14 @@ void ev_loop_epoll_run(ev_loop_epoll* loop,
             printf("Client on FD %d closed\n", ev->data.fd);
             close(ev->data.fd);
             break;
+          } else {
+            total_read += num_bytes;
+            remain -= num_bytes;
           }
-
-          buf[num_bytes] = '\0';
-
-          cb(ev->data.fd, buf, num_bytes, loop->user);
         }
+      
+        buf[total_read] = '\0';
+        cb(ev->data.fd, buf, total_read, loop->user);
       }
     }
   }

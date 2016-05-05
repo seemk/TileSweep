@@ -9,7 +9,7 @@ include_directories("/usr/local/include/mapnik")
 include(CheckFunctionExists)
 
 check_function_exists(kqueue HAVE_KQUEUE)
-check_function_exists(epoll HAVE_EPOLL)
+check_function_exists(epoll_ctl HAVE_EPOLL)
 
 if (HAVE_KQUEUE)
   set(LOOP_SRC ev_loop_kqueue.cpp)

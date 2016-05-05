@@ -32,6 +32,8 @@ add_executable(tilelite
   tl_time.cpp
   image_db.cpp
 
+  prerender.cpp
+
   hash/MurmurHash2.cpp
   ini/ini.c
 )

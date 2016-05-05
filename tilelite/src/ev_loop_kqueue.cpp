@@ -62,7 +62,7 @@ void ev_loop_kqueue_run(ev_loop_kqueue* loop, void (*cb)(int, const char*, int, 
                 kevent(kq, &add_read_socket, 1, nullptr, 0, nullptr);
               }
             } else if (loop->ev_list[i].flags & EVFILT_READ) {
-              const int max_len = 512;
+              const int max_len = 4096;
               char buf[max_len + 1];
               ssize_t bytes_read = read(loop->ev_list[i].ident, buf, max_len);
               if (bytes_read == -1) {

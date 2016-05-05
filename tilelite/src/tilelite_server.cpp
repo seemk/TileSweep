@@ -7,6 +7,7 @@
 #include "tile_renderer.h"
 #include "tcp.h"
 #include "tl_time.h"
+#include "tl_math.h"
 #include <rapidjson/document.h>
 
 #ifdef TILELITE_EPOLL
@@ -16,6 +17,58 @@
 #endif
 
 namespace rj = rapidjson;
+
+void read_tile_req(rj::Value& doc, tl_request* req) {
+  tl_tile* tile = &req->as.tile;
+  tile->x = doc["x"].GetInt();
+  tile->y = doc["y"].GetInt();
+  tile->z = doc["z"].GetInt();
+  tile->w = doc["w"].GetInt();
+  tile->h = doc["h"].GetInt();
+}
+
+void read_prerender_req(rj::Value& doc, tl_request* req) {
+  tl_prerender* prerender = &req->as.prerender;
+
+  // TODO: Schema validation
+  const rj::Value& points = doc["polygon"];
+
+  if (points.IsArray()) {
+    for (rj::SizeType i = 0; i < points.Size(); i++) {
+      const rj::Value& point = points[i];
+      prerender->points[i].x = point[0].GetDouble();
+      prerender->points[i].y = point[1].GetDouble();
+      prerender->num_points++;
+    }
+  }
+
+  const rj::Value& zoom_levels = doc["zoom"];
+
+  if (zoom_levels.IsArray()) {
+    prerender->num_zoom_levels = zoom_levels.Size() > 19 ? 19 : zoom_levels.Size();
+    for (int i = 0; i < prerender->num_zoom_levels; i++) {
+      prerender->zoom[i] = tl_clamp(zoom_levels[i].GetInt(), 0, 18);
+    }
+  }
+
+  const rj::Value& bounds = doc["bounds"];
+
+  if (bounds.IsArray()) {
+    prerender->num_points = bounds.Size() > MAX_PRERENDER_COORDS ? MAX_PRERENDER_COORDS
+                                                          : bounds.Size();
+    for (int i = 0; i < prerender->num_points; i++) {
+      const rj::Value& coord = bounds[i];
+      
+      if (coord.IsArray()) {
+        prerender->points[i].x = coord[0].GetDouble();
+        prerender->points[i].y = coord[1].GetDouble();
+      }
+    }
+  }
+
+  prerender->width = doc["width"].GetInt();
+  prerender->height = doc["height"].GetInt();
+}
 
 void set_signal_handler(int sig_num, void (*handler)(int sig_num)) {
   struct sigaction action;
@@ -57,6 +110,8 @@ tl_request read_request(const char* data, int len) {
   rj::Document doc;
   doc.Parse(data, len);
 
+  printf("%.*s\n", len, data);
+
   if (doc.HasParseError() || !doc.IsObject()) {
     printf("invalid JSON\n");
     return req;
@@ -76,14 +131,17 @@ tl_request read_request(const char* data, int len) {
     return req;
   }
 
-  if (req.type == rq_tile) {
-    rj::Value& content = doc["content"];
-    tl_tile* tile = &req.as.tile;
-    tile->x = content["x"].GetInt();
-    tile->y = content["y"].GetInt();
-    tile->z = content["z"].GetInt();
-    tile->w = content["w"].GetInt();
-    tile->h = content["h"].GetInt();
+  rj::Value& content = doc["content"];
+
+  switch (req.type) {
+    case rq_tile:
+      read_tile_req(content, &req);
+      break;
+    case rq_prerender:
+      read_prerender_req(content, &req);
+      break;
+    default:
+      break;
   }
 
   return req;

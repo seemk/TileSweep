@@ -7,6 +7,22 @@
 
 const uint64_t HASH_SEED = 0x1F0D3804;
 
+void process_prerender(tl_prerender prerender) {
+  printf("prerender req, w: %d h: %d\n\tzoom: ", prerender.width, prerender.height);
+
+  for (int i = 0; i < prerender.num_zoom_levels; i++) {
+    printf("%d ", prerender.zoom[i]);
+  }
+
+  printf("\n\tcoordinates: ");
+
+  for (int i = 0; i < prerender.num_points; i++) {
+    printf("(%.4f, %.4f) ", prerender.points[i].x, prerender.points[i].y);
+  }
+
+  printf("\n");
+}
+
 void send_image(int fd, const image* img) {
   int header_bytes_sent = send(fd, &img->len, sizeof(int), 0);
   if (header_bytes_sent == -1) {
@@ -116,6 +132,9 @@ void tilelite::thread_job(image_db* db, const tilelite_config* conf) {
               }
             }
           }
+          break;
+        case rq_prerender:
+          process_prerender(req.as.prerender); 
           break;
         default:
           break;

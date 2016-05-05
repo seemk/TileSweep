@@ -29,9 +29,12 @@ struct tl_point {
 };
 
 struct tl_prerender {
+  int num_points;
   tl_point points[MAX_PRERENDER_COORDS];
-  int w;
-  int h;
+  int num_zoom_levels;
+  int zoom[19];
+  int width;
+  int height;
 };
 
 union tl_request_union {

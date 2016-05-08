@@ -31,17 +31,6 @@ void read_prerender_req(rj::Value& doc, tl_request* req) {
   tl_prerender* prerender = &req->as.prerender;
 
   // TODO: Schema validation
-  const rj::Value& points = doc["polygon"];
-
-  if (points.IsArray()) {
-    for (rj::SizeType i = 0; i < points.Size(); i++) {
-      const rj::Value& point = points[i];
-      prerender->points[i].x = point[0].GetDouble();
-      prerender->points[i].y = point[1].GetDouble();
-      prerender->num_points++;
-    }
-  }
-
   const rj::Value& zoom_levels = doc["zoom"];
 
   if (zoom_levels.IsArray()) {

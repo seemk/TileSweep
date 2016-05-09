@@ -4,11 +4,13 @@
 #include <sys/socket.h>
 #include "hash/MurmurHash2.h"
 #include "tl_time.h"
+#include "tl_math.h"
+#include "prerender.h"
 
 const uint64_t HASH_SEED = 0x1F0D3804;
 
 void process_prerender(tl_prerender prerender) {
-  printf("prerender req, w: %d h: %d\n\tzoom: ", prerender.width, prerender.height);
+  printf("prerender req, w: %d h: %d num_points: %d\n\tzoom: ", prerender.width, prerender.height, prerender.num_points);
 
   for (int i = 0; i < prerender.num_zoom_levels; i++) {
     printf("%d ", prerender.zoom[i]);
@@ -18,6 +20,36 @@ void process_prerender(tl_prerender prerender) {
 
   for (int i = 0; i < prerender.num_points; i++) {
     printf("(%.4f, %.4f) ", prerender.points[i].x, prerender.points[i].y);
+  }
+
+  printf("\n");
+
+  const int num_points = prerender.num_points;
+  std::vector<vec2d> coordinates;
+  coordinates.reserve(num_points);
+
+  for (int i = 0; i < num_points; i++) {
+    coordinates.push_back(prerender.points[i]);
+  }
+
+  std::vector<vec2i> xyz_coordinates(num_points);
+
+  int z = 7;
+
+  latlon_to_xyz(coordinates.data(), num_points, z, xyz_coordinates.data());
+
+  for (auto p : xyz_coordinates) {
+    printf("(%d, %d) ", p.x, p.y);
+  }
+
+  printf("\n");
+
+  std::vector<vec2i> prerender_indices = make_prerender_indices(xyz_coordinates.data(), num_points);
+
+  printf("Prerender indices: \n");
+
+  for (auto p : prerender_indices) {
+    printf("(%d, %d) ", p.x, p.y);
   }
 
   printf("\n");

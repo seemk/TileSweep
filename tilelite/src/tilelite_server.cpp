@@ -9,6 +9,7 @@
 #include "tl_time.h"
 #include "tl_math.h"
 #include <rapidjson/document.h>
+#include <mapnik/debug.hpp>
 
 #ifdef TILELITE_EPOLL
 #include "ev_loop_epoll.h"
@@ -137,6 +138,7 @@ tl_request read_request(const char* data, int len) {
 }
 
 int main(int argc, char** argv) {
+  mapnik::logger::instance().set_severity(mapnik::logger::none);
   tilelite_config conf;
 
   if (ini_parse("conf.ini", ini_parse_callback, &conf) < 0) {

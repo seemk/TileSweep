@@ -24,11 +24,13 @@ endif()
 add_definitions(-DLODEPNG_NO_COMPILE_CPP)
 
 add_executable(tilelite
+  hit_test.cpp
   tilelite_server.cpp
   ${LOOP_SRC}
   tcp.cpp
   tilelite.cpp
   tile_renderer.cpp
+  tl_math.cpp
   tl_time.cpp
   image_db.cpp
 
@@ -36,6 +38,12 @@ add_executable(tilelite
 
   hash/MurmurHash2.cpp
   ini/ini.c
+)
+
+add_executable(tests
+  test/tests.cpp
+
+  hit_test.cpp
 )
 
 target_link_libraries(

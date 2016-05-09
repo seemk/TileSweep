@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include "common.h"
+#include "tl_math.h"
 
 enum tl_request_type : uint64_t {
   rq_invalid = 0,
@@ -23,14 +24,9 @@ struct tl_tile {
   }
 };
 
-struct tl_point {
-  double x;
-  double y;
-};
-
 struct tl_prerender {
   int num_points;
-  tl_point points[MAX_PRERENDER_COORDS];
+  vec2d points[MAX_PRERENDER_COORDS];
   int num_zoom_levels;
   int zoom[19];
   int width;

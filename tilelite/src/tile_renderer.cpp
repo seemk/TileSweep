@@ -8,13 +8,7 @@
 #include <mapnik/image_util.hpp>
 #include "image.h"
 #include "tl_request.h"
-
-const double PI = 3.14159265358979323846;
-
-struct latlon {
-  double latitude;
-  double longitude;
-};
+#include "tl_math.h"
 
 bool register_plugins(const char* plugins_path) {
   mapnik::datasource_cache::instance().register_datasources(plugins_path);
@@ -39,25 +33,16 @@ bool tile_renderer_init(tile_renderer* renderer, const char* mapnik_xml_path) {
   return true;
 }
 
-latlon xyz_latlon(double x, double y, double z) {
-  latlon res;
-
-  double n = std::pow(2.0, z);
-  res.longitude = x / n * 360.0 - 180.0;
-  res.latitude =
-      std::atan(std::sinh(PI * (1.0 - 2.0 * y / n))) * 180.0 / PI;
-  return res;
-}
-
 bool render_tile(tile_renderer* renderer, const tl_tile* tile, image* image) {
-  latlon p1 = xyz_latlon(double(tile->x), double(tile->y), double(tile->z));
-  latlon p2 = xyz_latlon(double(tile->x + 1), double(tile->y + 1), double(tile->z));
+  vec3d p1_xyz { double(tile->x), double(tile->y), double(tile->z) };
+  vec3d p2_xyz { double(tile->x + 1), double(tile->y + 1), double(tile->z) };
+  vec2d p1 = xyz_to_latlon(p1_xyz);
+  vec2d p2 = xyz_to_latlon(p2_xyz);
 
-  mapnik::lonlat2merc(&p1.longitude, &p1.latitude, 1);
-  mapnik::lonlat2merc(&p2.longitude, &p2.latitude, 1);
+  mapnik::lonlat2merc(&p1.x, &p1.y, 1);
+  mapnik::lonlat2merc(&p2.x, &p2.y, 1);
 
-  mapnik::box2d<double> bbox(p1.longitude, p1.latitude, p2.longitude,
-                             p2.latitude);
+  mapnik::box2d<double> bbox(p1.x, p1.y, p2.x, p2.y);
 
   renderer->map->resize(tile->w, tile->h);
   renderer->map->zoom_to_box(bbox);

@@ -36,9 +36,18 @@
         })
       });
 
+      var grid = new ol.tilegrid.createXYZ({});
+      var debug = new ol.layer.Tile({
+        source: new ol.source.TileDebug({
+          wrapX: false,
+          tileGrid: grid,
+          projection: "EPSG:3857"  
+        })
+      });
+
       var sketch;
       var map = new ol.Map({
-        layers: [raster, vector],
+        layers: [raster, debug, vector],
         target: 'map',
         view: new ol.View({
           center: ol.proj.fromLonLat([24.747583, 59.461970]),
@@ -98,15 +107,9 @@
         draw.on('drawend',
           function(evt) {
             var feature = evt.feature;
-            var cs = feature.getGeometry().getCoordinates()[0].map(function(c) {
+            var coords = feature.getGeometry().getCoordinates()[0].map(function(c) {
               return ol.proj.toLonLat(c);
-            });
-
-            var coords = [];
-
-            for (var i = 0; i < 10; i++) {
-              cs.forEach(function(c) { coords.push(c); });
-            }
+            }).slice(0, -1);
 
             source.clear();
             sketch = null;

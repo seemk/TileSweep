@@ -35,12 +35,24 @@ std::vector<vec2i> make_prerender_indices(const vec2i* xyz_poly, int len) {
 
   std::vector<vec2i> indices;
 
+  auto remove_duplicate_indices = [](std::vector<vec2i>& v) {
+    std::sort(v.begin(), v.end(), [](vec2i a, vec2i b) {
+      if (a.y == b.y) return a.x > b.x;
+      return a.y > b.y;
+    });
+
+    v.erase(std::unique(v.begin(), v.end(), [](vec2i a, vec2i b) {
+      return a.x == b.x && a.y == b.y;
+    }), v.end());
+  };
+
   if (bounds.br.x - bounds.tl.x == 0 ||
       bounds.br.y - bounds.tl.y == 0) {
     for (int i = 0; i < len; i++) {
       indices.push_back(xyz_poly[i]);
     }
 
+    remove_duplicate_indices(indices);
     return indices;
   }
 
@@ -61,5 +73,6 @@ std::vector<vec2i> make_prerender_indices(const vec2i* xyz_poly, int len) {
 
   poly_hit_test_destroy(&test_ctx);
 
+  remove_duplicate_indices(indices);
   return indices;
 }

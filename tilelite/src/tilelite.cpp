@@ -9,7 +9,26 @@
 
 const uint64_t HASH_SEED = 0x1F0D3804;
 
-void process_prerender(tl_prerender prerender) {
+void process_simple_render(tilelite* context, image_db* db, tile_renderer* renderer, tl_tile t) {
+  printf("processing simple render\n");
+  uint64_t pos_hash = t.hash();
+  image img;
+  bool existing = image_db_fetch(db, pos_hash, t.w, t.h, &img);
+
+  if (existing) {
+    printf("Existing image\n");
+    free(img.data);
+    return;
+  }
+
+  if (render_tile(renderer, &t, &img)) {
+    printf("rendered image\n");
+    uint64_t image_hash = MurmurHash2(img.data, img.len, HASH_SEED);
+    context->queue_image_write({img, pos_hash, image_hash});
+  }
+}
+
+void process_prerender(tilelite* context, tl_prerender prerender) {
   printf("prerender req, w: %d h: %d num_points: %d\n\tzoom: ", prerender.width, prerender.height, prerender.num_points);
 
   for (int i = 0; i < prerender.num_zoom_levels; i++) {
@@ -32,27 +51,29 @@ void process_prerender(tl_prerender prerender) {
     coordinates.push_back(prerender.points[i]);
   }
 
-  std::vector<vec2i> xyz_coordinates(num_points);
+  for (int i = 0; i < prerender.num_zoom_levels; i++) {
+    std::vector<vec2i> xyz_coordinates(num_points);
+    int z = prerender.zoom[i];
+    latlon_to_xyz(coordinates.data(), num_points, z, xyz_coordinates.data());
+    std::vector<vec2i> prerender_indices = make_prerender_indices(xyz_coordinates.data(), num_points);
 
-  int z = 7;
+    printf("z: %d; prerender indices (%lu): \n", z, prerender_indices.size());
+    for (auto p : prerender_indices) {
+      tl_request req;
+      req.request_time = tl_usec_now();
+      req.client_fd = -1;
+      req.type = rq_prerender_img;
 
-  latlon_to_xyz(coordinates.data(), num_points, z, xyz_coordinates.data());
-
-  for (auto p : xyz_coordinates) {
-    printf("(%d, %d) ", p.x, p.y);
+      tl_tile* tile = &req.as.tile;
+      tile->x = p.x;
+      tile->y = p.y;
+      tile->z = z;
+      tile->w = prerender.width;
+      tile->h = prerender.height;
+      context->queue_tile_request(req);
+    }
   }
 
-  printf("\n");
-
-  std::vector<vec2i> prerender_indices = make_prerender_indices(xyz_coordinates.data(), num_points);
-
-  printf("Prerender indices: \n");
-
-  for (auto p : prerender_indices) {
-    printf("(%d, %d) ", p.x, p.y);
-  }
-
-  printf("\n");
 }
 
 void send_image(int fd, const image* img) {
@@ -166,7 +187,10 @@ void tilelite::thread_job(image_db* db, const tilelite_config* conf) {
           }
           break;
         case rq_prerender:
-          process_prerender(req.as.prerender); 
+          process_prerender(this, req.as.prerender); 
+          break;
+        case rq_prerender_img:
+          process_simple_render(this, db, &renderer, req.as.tile);
           break;
         default:
           break;

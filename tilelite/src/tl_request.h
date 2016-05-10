@@ -8,8 +8,9 @@ enum tl_request_type : uint64_t {
   rq_invalid = 0,
   rq_tile = 1,
   rq_prerender = 2,
+  rq_prerender_img = 3,
 
-  RQ_COUNT = 3
+  RQ_COUNT = 4
 };
 
 struct tl_tile {

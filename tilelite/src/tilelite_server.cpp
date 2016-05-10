@@ -44,8 +44,8 @@ void read_prerender_req(rj::Value& doc, tl_request* req) {
   const rj::Value& bounds = doc["bounds"];
 
   if (bounds.IsArray()) {
-    prerender->num_points = bounds.Size() > MAX_PRERENDER_COORDS ? MAX_PRERENDER_COORDS
-                                                          : bounds.Size();
+    prerender->num_points = bounds.Size();
+    prerender->points = (vec2d*)calloc(prerender->num_points, sizeof(vec2d));
     for (int i = 0; i < prerender->num_points; i++) {
       const rj::Value& coord = bounds[i];
       
@@ -73,14 +73,7 @@ void set_signal_handler(int sig_num, void (*handler)(int sig_num)) {
 int ini_parse_callback(void* user, const char* section, const char* name,
                        const char* value) {
   tilelite_config* conf = (tilelite_config*)user;
-
-  if (strcmp(name, "plugins") == 0) {
-    register_plugins(value);
-  } else if (strcmp(name, "fonts") == 0) {
-    register_fonts(value);
-  } else {
-    (*conf)[name] = value;
-  }
+  (*conf)[name] = value;
 
   return 1;
 }
@@ -90,9 +83,12 @@ void set_defaults(tilelite_config* conf) {
     if (conf->count(key) == 0) (*conf)[key] = value;
   };
 
+  set_key("plugins", "");
+  set_key("fonts", "");
   set_key("threads", "1");
   set_key("tile_db", "tiles.db");
   set_key("port", "9567");
+  set_key("rendering", "1");
 }
 
 tl_request read_request(const char* data, int len) {
@@ -138,12 +134,17 @@ tl_request read_request(const char* data, int len) {
 }
 
 int main(int argc, char** argv) {
-  mapnik::logger::instance().set_severity(mapnik::logger::none);
   tilelite_config conf;
 
   if (ini_parse("conf.ini", ini_parse_callback, &conf) < 0) {
     fprintf(stderr, "failed load configuration file\n");
     return 1;
+  }
+
+  if (conf["rendering"] == "1") {
+    mapnik::logger::instance().set_severity(mapnik::logger::none);
+    register_plugins(conf["plugins"].c_str());
+    register_fonts(conf["fonts"].c_str());
   }
 
   set_defaults(&conf);

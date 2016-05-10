@@ -6,23 +6,59 @@
 #include "tl_time.h"
 #include "tl_math.h"
 #include "prerender.h"
+#include <rapidjson/writer.h>
+#include <rapidjson/stringbuffer.h>
 
 const uint64_t HASH_SEED = 0x1F0D3804;
 
+namespace rj = rapidjson;
+
+bool send_bytes(int fd, const uint8_t* buf, int len) {
+  int offset = 0;
+  int bytes_left = len;
+  while (bytes_left > 0) {
+    int bytes_sent = send(fd, buf + offset, bytes_left, 0);
+
+    if (bytes_sent == -1) {
+      perror("send to client fail: ");
+      return false;
+    }
+
+    bytes_left -= bytes_sent;
+    offset += bytes_sent;
+  }
+
+  return true;
+}
+
+void send_status(int fd, tl_status status) {
+  rj::StringBuffer buffer;
+  rj::Writer<rj::StringBuffer> writer(buffer);
+
+  writer.StartObject();
+  writer.Key("status");
+  writer.Uint(status);
+  writer.EndObject();
+
+  int size = buffer.GetSize() + 1;
+  const uint8_t* content = (const uint8_t*)buffer.GetString();
+
+  send_bytes(fd, content, size);
+}
+
 void process_simple_render(tilelite* context, image_db* db, tile_renderer* renderer, tl_tile t) {
-  printf("processing simple render\n");
   uint64_t pos_hash = t.hash();
+
+  // TODO: Check existence without reading and overwrite
   image img;
   bool existing = image_db_fetch(db, pos_hash, t.w, t.h, &img);
 
   if (existing) {
-    printf("Existing image\n");
     free(img.data);
     return;
   }
 
   if (render_tile(renderer, &t, &img)) {
-    printf("rendered image\n");
     uint64_t image_hash = MurmurHash2(img.data, img.len, HASH_SEED);
     context->queue_image_write({img, pos_hash, image_hash});
   }
@@ -51,13 +87,15 @@ void process_prerender(tilelite* context, tl_prerender prerender) {
     coordinates.push_back(prerender.points[i]);
   }
 
+  uint64_t total_indices = 0;
   for (int i = 0; i < prerender.num_zoom_levels; i++) {
     std::vector<vec2i> xyz_coordinates(num_points);
     int z = prerender.zoom[i];
     latlon_to_xyz(coordinates.data(), num_points, z, xyz_coordinates.data());
     std::vector<vec2i> prerender_indices = make_prerender_indices(xyz_coordinates.data(), num_points);
 
-    printf("z: %d; prerender indices (%lu): \n", z, prerender_indices.size());
+    total_indices += prerender_indices.size();
+
     for (auto p : prerender_indices) {
       tl_request req;
       req.request_time = tl_usec_now();
@@ -74,34 +112,33 @@ void process_prerender(tilelite* context, tl_prerender prerender) {
     }
   }
 
+  printf("prerender queued; total indices: %llu\n", total_indices);
+
+  free(prerender.points);
 }
 
 void send_image(int fd, const image* img) {
-  int header_bytes_sent = send(fd, &img->len, sizeof(int), 0);
-  if (header_bytes_sent == -1) {
-    perror("failure sending image size: ");
-    return;
-  }
+  rj::StringBuffer buffer;
+  rj::Writer<rj::StringBuffer> writer(buffer);
 
-  const int bytes_to_send = img->len;
+  writer.StartObject();
+  writer.Key("status");
+  writer.Uint(tl_ok);
+  writer.Key("size");
+  writer.Uint(img->len);
+  writer.EndObject();
 
-  int bytes_left = bytes_to_send;
-
-  while (bytes_left > 0) {
-    int bytes_sent = send(fd, img->data, bytes_left, 0);
-
-    if (bytes_sent == -1) {
-      perror("send to client fail: ");
-      return;
-    }
-
-    bytes_left -= bytes_sent;
-  }
+  int size = buffer.GetSize() + 1;
+  const uint8_t* content = (const uint8_t*)buffer.GetString();
+  send_bytes(fd, content, size);
+  send_bytes(fd, img->data, img->len);
 }
 
 tilelite::tilelite(const tilelite_config* conf) : running(true) {
   int num_threads = std::stoi(conf->at("threads"));
   if (num_threads < 1) num_threads = 1;
+
+  rendering_enabled = conf->at("rendering") == "1";
 
   std::string db_name = conf->at("tile_db");
   for (int i = 0; i < num_threads + 1; i++) {
@@ -149,9 +186,11 @@ void tilelite::thread_job(image_db* db, const tilelite_config* conf) {
   std::string mapnik_xml_path = conf->at("mapnik_xml");
 
   tile_renderer renderer;
-  if (!tile_renderer_init(&renderer, mapnik_xml_path.c_str())) {
-    fprintf(stderr, "failed to initialize renderer\n");
-    return;
+  if (conf->at("rendering") == "1") {
+    if (!tile_renderer_init(&renderer, mapnik_xml_path.c_str())) {
+      fprintf(stderr, "failed to initialize renderer\n");
+      return;
+    }
   }
 
   while (running) {
@@ -173,15 +212,17 @@ void tilelite::thread_job(image_db* db, const tilelite_config* conf) {
                 printf("[%d, %d, %d, %d, %d] (%d bytes) | %.2f ms\n", t.w, t.h, t.z,
                        t.x, t.y, img.len, double(processing_time_us) / 1000.0);
               } else {
-                printf("[%d, %d, %d, %d, %d] (%d bytes) | %ld us\n", t.w, t.h, t.z, t.x,
+                printf("[%d, %d, %d, %d, %d] (%d bytes) | %lld us\n", t.w, t.h, t.z, t.x,
                        t.y, img.len, processing_time_us);
               }
               free(img.data);
             } else {
-              if (render_tile(&renderer, &t, &img)) {
+              if (rendering_enabled && render_tile(&renderer, &t, &img)) {
                 send_image(req.client_fd, &img);
                 uint64_t image_hash = MurmurHash2(img.data, img.len, HASH_SEED);
                 queue_image_write({img, pos_hash, image_hash});
+              } else {
+                send_status(req.client_fd, tl_no_tile);
               }
             }
           }

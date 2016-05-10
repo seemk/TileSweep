@@ -27,9 +27,9 @@ struct tl_tile {
 
 struct tl_prerender {
   int num_points;
-  vec2d points[MAX_PRERENDER_COORDS];
+  vec2d* points;
   int num_zoom_levels;
-  int zoom[19];
+  uint8_t zoom[MAX_ZOOM_LEVEL + 1];
   int width;
   int height;
 };

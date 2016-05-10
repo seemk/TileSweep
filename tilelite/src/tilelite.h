@@ -35,4 +35,6 @@ struct tilelite {
   LightweightSemaphore pending_img_writes_sema;
   tl_queue<image_write_task> pending_img_writes;
   std::thread image_write_thread;
+
+  bool rendering_enabled;
 };

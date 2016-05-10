@@ -1,5 +1,3 @@
-local bit = require("bit")
-
 local sock = ngx.socket.tcp();
 sock:settimeout(60000)
 local ok, err = sock:connect(tile_sv_host, tile_sv_port)
@@ -22,17 +20,29 @@ local query = {
 }
 ok, err = sock:send(cjson.encode(query))
 
-local size_data, err = sock:receive(4)
-if not size_data then
+local reader = sock:receiveuntil("\0")
+
+local res_json, err = reader()
+
+if not res_json then
   ngx.exit(ngx.HTTP_REQUEST_TIMEOUT)
 end
 
-local b1 = string.byte(size_data, 1)
-local b2 = string.byte(size_data, 2)
-local b3 = string.byte(size_data, 3)
-local b4 = string.byte(size_data, 4)
+local res = cjson.decode(res_json)
+if not res then
+  ngx.exit(ngx.ERROR)
+end
 
-local image_size = bit.bor(bit.lshift(b4, 24), bit.lshift(b3, 16), bit.lshift(b2, 8), b1)
+local status = res["status"]
+if status ~= 0 then
+  ngx.exit(ngx.HTTP_NO_CONTENT)
+end
+
+local image_size = res["size"]
+
+if not image_size then
+  ngx.exit(ngx.ERROR)
+end
 
 local image_data, err = sock:receive(image_size)
 sock:setkeepalive()

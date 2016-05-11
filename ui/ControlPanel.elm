@@ -37,14 +37,13 @@ type alias StatusResponse =
 type alias Model =
   { bounds : (List Coordinate)
   , size : Int
-  , zoomLevels : (List Int)
   , minZoom : Int
   , maxZoom : Int
   }
 
 init : (Model, Cmd Msg)
 init =
-  (Model [] 256 [1..15] 0 15, Cmd.none)
+  (Model [] 256 0 15, Cmd.none)
 
 limitZoom z =
   if z > 19 then
@@ -68,10 +67,10 @@ update msg model =
       ({ model | size = size }, Cmd.none)
     MinZoomUpdate z ->
       let zoom = Basics.clamp 0 model.maxZoom (getZoom z) in
-      ({ model | minZoom = zoom, zoomLevels = [zoom..model.maxZoom] }, Cmd.none)
+      ({ model | minZoom = zoom }, Cmd.none)
     MaxZoomUpdate z ->
       let zoom = Basics.clamp model.minZoom 19 (getZoom z) in
-      ({ model | maxZoom = zoom, zoomLevels = [model.minZoom..zoom] }, Cmd.none)
+      ({ model | maxZoom = zoom }, Cmd.none)
     ResponseComplete status ->
       (model, Cmd.none)
     ResponseFail _ ->
@@ -85,7 +84,7 @@ query m =
   JE.object
     [ ("width", JE.int m.size)
     , ("height", JE.int m.size)
-    , ("zoom", JE.list (List.map JE.int m.zoomLevels))
+    , ("zoom", JE.list (List.map JE.int [m.minZoom..m.maxZoom]))
     , ("bounds", JE.list (List.map (\(x,y) -> JE.list [JE.float x, JE.float y]) m.bounds))
     ]
 

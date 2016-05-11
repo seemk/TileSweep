@@ -6,6 +6,10 @@ import Html.Events exposing (..)
 import Html.Attributes exposing (..)
 import Debug exposing (..)
 import String
+import Http
+import Task exposing (..)
+import Json.Decode as JD exposing ((:=))
+import Json.Encode as JE
 
 main =
   App.program
@@ -24,6 +28,11 @@ type Msg = Submit
   | SizeChange Int
   | MinZoomUpdate String
   | MaxZoomUpdate String
+  | ResponseComplete StatusResponse
+  | ResponseFail Http.Error
+
+type alias StatusResponse =
+  { status: Int }
 
 type alias Model =
   { bounds : (List Coordinate)
@@ -54,16 +63,35 @@ update msg model =
     Coordinates coords ->
       ({ model | bounds = coords }, Cmd.none)
     Submit ->
-      (model, Cmd.none)
+      (model, submitRenderJob model)
     SizeChange size ->
       ({ model | size = size }, Cmd.none)
     MinZoomUpdate z ->
       let zoom = Basics.clamp 0 model.maxZoom (getZoom z) in
-      ({ model | minZoom = zoom }, Cmd.none)
+      ({ model | minZoom = zoom, zoomLevels = [zoom..model.maxZoom] }, Cmd.none)
     MaxZoomUpdate z ->
       let zoom = Basics.clamp model.minZoom 19 (getZoom z) in
-      ({ model | maxZoom = zoom }, Cmd.none)
+      ({ model | maxZoom = zoom, zoomLevels = [model.minZoom..zoom] }, Cmd.none)
+    ResponseComplete status ->
+      (model, Cmd.none)
+    ResponseFail _ ->
+      (model, Cmd.none)
 
+status : JD.Decoder StatusResponse
+status =
+  JD.object1 StatusResponse ("status" := JD.int)
+
+query m =
+  JE.object
+    [ ("width", JE.int m.size)
+    , ("height", JE.int m.size)
+    , ("zoom", JE.list (List.map JE.int m.zoomLevels))
+    , ("bounds", JE.list (List.map (\(x,y) -> JE.list [JE.float x, JE.float y]) m.bounds))
+    ]
+
+submitRenderJob : Model -> Cmd Msg
+submitRenderJob m =
+  Task.perform ResponseFail ResponseComplete (Http.post status "/prerender" (Http.string (JE.encode 0 (query m))))
 
 subscriptions : Model -> Sub Msg
 subscriptions model =

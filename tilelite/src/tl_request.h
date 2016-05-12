@@ -9,8 +9,9 @@ enum tl_request_type : uint64_t {
   rq_tile = 1,
   rq_prerender = 2,
   rq_prerender_img = 3,
+  rq_server_info = 4,
 
-  RQ_COUNT = 4
+  RQ_COUNT = 5
 };
 
 struct tl_tile {

@@ -46,6 +46,23 @@ void send_status(int fd, tl_status status) {
   send_bytes(fd, content, size);
 }
 
+void send_server_info(int fd, tilelite* context) {
+  rj::StringBuffer buffer;
+  rj::Writer<rj::StringBuffer> writer(buffer);
+  
+  writer.StartObject();
+  writer.Key("requestQueueSize");
+  writer.Uint(context->pending_requests.size_approx());
+  writer.Key("writeQueueSize");
+  writer.Uint(context->pending_img_writes.size_approx());
+  writer.EndObject();
+
+  int size = buffer.GetSize() + 1;
+  const uint8_t* content = (const uint8_t*)buffer.GetString();
+
+  send_bytes(fd, content, size);
+}
+
 void process_simple_render(tilelite* context, image_db* db, tile_renderer* renderer, tl_tile t) {
   uint64_t pos_hash = t.hash();
 
@@ -229,9 +246,13 @@ void tilelite::thread_job(image_db* db, const tilelite_config* conf) {
           break;
         case rq_prerender:
           process_prerender(this, req.as.prerender); 
+          send_status(req.client_fd, tl_ok);
           break;
         case rq_prerender_img:
           process_simple_render(this, db, &renderer, req.as.tile);
+          break;
+        case rq_server_info:
+          send_server_info(req.client_fd, this);
           break;
         default:
           break;

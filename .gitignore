@@ -6,5 +6,6 @@ fastcgi_temp/
 scgi_temp/
 uwsgi_temp/
 logs/
+static/
 elm-stuff/
 controlpanel.js

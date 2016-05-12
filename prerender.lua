@@ -19,9 +19,11 @@ if not ok then
   ngx.exit(ngx.HTTP_REQUEST_TIMEOUT)
 end
 
-ngx.say(cjson.encode(prerender_req))
-
 ok, err = sock:send(cjson.encode(prerender_req))
+local reader = sock:receiveuntil('\0')
+local response = reader()
+ngx.say(response)
+
 sock:setkeepalive()
 
 ngx.exit(ngx.HTTP_OK)

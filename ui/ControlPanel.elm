@@ -10,6 +10,7 @@ import Http
 import Task exposing (..)
 import Json.Decode as JD exposing ((:=))
 import Json.Encode as JE
+import Time exposing (Time, second)
 
 main =
   App.program
@@ -30,6 +31,13 @@ type Msg = Submit
   | MaxZoomUpdate String
   | ResponseComplete StatusResponse
   | ResponseFail Http.Error
+  | ServerStatusComplete ServerStatus
+  | Tick Time
+
+type alias ServerStatus =
+  { requestQueueSize : Int
+  , writeQueueSize : Int
+  }
 
 type alias StatusResponse =
   { status: Int }
@@ -39,11 +47,12 @@ type alias Model =
   , size : Int
   , minZoom : Int
   , maxZoom : Int
+  , serverStatus : ServerStatus
   }
 
 init : (Model, Cmd Msg)
 init =
-  (Model [] 256 0 15, Cmd.none)
+  (Model [] 256 0 15 (ServerStatus 0 0), Cmd.none)
 
 limitZoom z =
   if z > 19 then
@@ -75,6 +84,11 @@ update msg model =
       (model, Cmd.none)
     ResponseFail _ ->
       (model, Cmd.none)
+    Tick time ->
+      (model, fetchServerInfo model)
+    ServerStatusComplete response ->
+      log (toString response)
+      (model, Cmd.none)
 
 status : JD.Decoder StatusResponse
 status =
@@ -88,23 +102,35 @@ query m =
     , ("bounds", JE.list (List.map (\(x,y) -> JE.list [JE.float x, JE.float y]) m.bounds))
     ]
 
+serverStatus : JD.Decoder ServerStatus
+serverStatus =
+  JD.object2 ServerStatus ("requestQueueSize" := JD.int) ("writeQueueSize" := JD.int)
+
 submitRenderJob : Model -> Cmd Msg
 submitRenderJob m =
   Task.perform ResponseFail ResponseComplete (Http.post status "/prerender" (Http.string (JE.encode 0 (query m))))
 
+fetchServerInfo : Model -> Cmd Msg
+fetchServerInfo m =
+  Task.perform ResponseFail ServerStatusComplete (Http.get serverStatus "/status")
+
 subscriptions : Model -> Sub Msg
 subscriptions model =
-  bounds Coordinates
+  Sub.batch [bounds Coordinates, Time.every 2000 Tick]
 
 view : Model -> Html Msg
 view model =
   div []
     [ div [ style [("display", "flex")] ] [ text "Tile size: ", radio 256 model, radio 512 model ]
-    , input [ type' "number", value (toString model.minZoom), onInput MinZoomUpdate ] []
-    , input [ type' "number", value (toString model.maxZoom), onInput MaxZoomUpdate ] []
+    , div []
+      [ div [] [ text "Zoom levels: " ] 
+      , input [ type' "number", value (toString model.minZoom), onInput MinZoomUpdate ] []
+      , input [ type' "number", value (toString model.maxZoom), onInput MaxZoomUpdate ] []
+      ]
     , button [ onClick Submit ] [ text "Submit" ]
-    , h1 [] [ text (toString (List.length model.bounds)) ]
-    , h1 [] [ text (toString model.size) ]
+    , div [] [ text "Server status"
+             , div [] [ text ("Request queue size " ++ (toString model.serverStatus.requestQueueSize)) ]
+             ]
     ]
 
 radio : Int -> Model -> Html Msg

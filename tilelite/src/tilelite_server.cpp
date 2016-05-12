@@ -8,6 +8,7 @@
 #include "tcp.h"
 #include "tl_time.h"
 #include "tl_math.h"
+#include "send.h"
 #include <rapidjson/document.h>
 #include <mapnik/debug.hpp>
 
@@ -176,10 +177,17 @@ int main(int argc, char** argv) {
     tilelite* ctx = (tilelite*)user;
 
     tl_request req = read_request(data, len);
-    if (req.type != rq_invalid) {
-      req.client_fd = fd;
-      req.request_time = tl_usec_now();
-      ctx->queue_tile_request(req);
+    switch (req.type) {
+      case rq_server_info:
+        send_server_info(fd, ctx);
+        break;
+      case rq_invalid:
+        break;
+      default:
+        req.client_fd = fd;
+        req.request_time = tl_usec_now();
+        ctx->queue_tile_request(req);
+        break;
     }
   };
 

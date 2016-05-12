@@ -87,8 +87,7 @@ update msg model =
     Tick time ->
       (model, fetchServerInfo model)
     ServerStatusComplete response ->
-      log (toString response)
-      (model, Cmd.none)
+      ({model | serverStatus = response}, Cmd.none)
 
 status : JD.Decoder StatusResponse
 status =
@@ -130,6 +129,7 @@ view model =
     , button [ onClick Submit ] [ text "Submit" ]
     , div [] [ text "Server status"
              , div [] [ text ("Request queue size " ++ (toString model.serverStatus.requestQueueSize)) ]
+             , div [] [ text ("Write queue size " ++ (toString model.serverStatus.writeQueueSize)) ]
              ]
     ]
 

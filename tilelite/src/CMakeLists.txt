@@ -35,6 +35,7 @@ add_executable(tilelite
   image_db.cpp
 
   prerender.cpp
+  send.cpp
 
   hash/MurmurHash2.cpp
   ini/ini.c

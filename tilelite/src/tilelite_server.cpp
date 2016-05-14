@@ -142,13 +142,14 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+  set_defaults(&conf);
+
   if (conf["rendering"] == "1") {
     mapnik::logger::instance().set_severity(mapnik::logger::none);
     register_plugins(conf["plugins"].c_str());
     register_fonts(conf["fonts"].c_str());
   }
 
-  set_defaults(&conf);
   set_signal_handler(SIGPIPE, SIG_IGN);
   set_signal_handler(SIGINT, SIG_IGN);
 

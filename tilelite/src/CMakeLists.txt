@@ -34,6 +34,8 @@ add_executable(tilelite
   tl_time.cpp
   image_db.cpp
 
+  parg/parg.c
+
   prerender.cpp
   send.cpp
 

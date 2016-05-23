@@ -11,6 +11,7 @@
 #include "send.h"
 #include <rapidjson/document.h>
 #include <mapnik/debug.hpp>
+#include "parg/parg.h"
 
 #ifdef TILELITE_EPOLL
 #include "ev_loop_epoll.h"
@@ -134,10 +135,49 @@ tl_request read_request(const char* data, int len) {
   return req;
 }
 
-int main(int argc, char** argv) {
+tilelite_config parse_args(int argc, char** argv) {
   tilelite_config conf;
+  
+  parg_state args;
+  parg_init(&args);
 
-  if (ini_parse("conf.ini", ini_parse_callback, &conf) < 0) {
+  auto usage = []() {
+    printf("Usage: tilelite [-c conf_path] [-h]\n");
+    exit(0);
+  };
+
+  int c = -1;
+  while ((c = parg_getopt(&args, argc, argv, "c:h")) != -1) {
+    switch (c) {
+      case 'c':
+        conf["conf_file_path"] = std::string(args.optarg);
+        break;
+      case 'h':
+        usage();
+        break;
+      case '?':
+        if (args.optopt == 'c') {
+          fprintf(stderr, "Option '-c' requires an argument");
+          usage();
+        }
+        break;
+      case 1:
+      default:
+        break;
+    }
+  }
+
+  if (conf.count("conf_file_path") == 0) {
+    usage();
+  }
+
+  return conf;
+}
+
+int main(int argc, char** argv) {
+  tilelite_config conf = parse_args(argc, argv);
+
+  if (ini_parse(conf["conf_file_path"].c_str(), ini_parse_callback, &conf) < 0) {
     fprintf(stderr, "failed load configuration file\n");
     return 1;
   }

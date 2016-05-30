@@ -3,6 +3,7 @@
 #include <sys/socket.h>
 #include <rapidjson/writer.h>
 #include <rapidjson/stringbuffer.h>
+#include "tl_log.h"
 
 namespace rj = rapidjson;
 
@@ -13,7 +14,7 @@ bool send_bytes(int fd, const uint8_t* buf, int len) {
     int bytes_sent = send(fd, buf + offset, bytes_left, 0);
 
     if (bytes_sent == -1) {
-      perror("send to client fail: ");
+      tl_log("send to client fail: %s", strerror(errno));
       return false;
     }
 

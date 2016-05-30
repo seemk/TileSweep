@@ -4,6 +4,9 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <signal.h>
+#include <string.h>
+#include <errno.h>
+#include "tl_log.h"
 
 bool ev_loop_kqueue_init(ev_loop_kqueue* loop, int socket) {
   loop->socket = socket;
@@ -29,12 +32,12 @@ void ev_loop_kqueue_run(ev_loop_kqueue* loop, void (*cb)(int, const char*, int, 
   for (;;) {
     int n = kevent(kq, nullptr, 0, loop->ev_list, 128, nullptr);
     if (n < 1) {
-      printf("kevent error\n");
+      tl_log("kevent error");
     }
 
     for (int i = 0; i < n; i++) {
       struct kevent* ev = &loop->ev_list[i];
-      switch (ev->filter) {
+      switch (ev->filter) {
         case EVFILT_SIGNAL:
           if (ev->ident == SIGINT) {
             close(loop->socket);
@@ -55,7 +58,7 @@ void ev_loop_kqueue_run(ev_loop_kqueue* loop, void (*cb)(int, const char*, int, 
               socklen_t socklen = sizeof(addr);
               int fd = accept(loop->ev_list[i].ident, (struct sockaddr*)&addr, &socklen);
               if (fd == -1) {
-                printf("Failed to accept\n");
+                tl_log("Failed to accept");
               } else {
                 struct kevent add_read_socket;
                 EV_SET(&add_read_socket, fd, EVFILT_READ, EV_ADD, 0, 0, nullptr);
@@ -66,7 +69,7 @@ void ev_loop_kqueue_run(ev_loop_kqueue* loop, void (*cb)(int, const char*, int, 
               char buf[max_len + 1];
               ssize_t bytes_read = read(loop->ev_list[i].ident, buf, max_len);
               if (bytes_read == -1) {
-                perror("receive: ");
+                tl_log("receive error: %s", strerror(errno));
                 close(loop->ev_list[i].ident);
               } else {
                 buf[max_len] = '\0';

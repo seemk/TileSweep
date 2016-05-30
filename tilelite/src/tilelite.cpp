@@ -6,6 +6,7 @@
 #include "tl_math.h"
 #include "prerender.h"
 #include "send.h"
+#include "tl_log.h"
 
 const uint64_t HASH_SEED = 0x1F0D3804;
 
@@ -28,20 +29,6 @@ void process_simple_render(tilelite* context, image_db* db, tile_renderer* rende
 }
 
 void process_prerender(tilelite* context, tl_prerender prerender) {
-  printf("prerender req, w: %d h: %d num_points: %d\n\tzoom: ", prerender.width, prerender.height, prerender.num_points);
-
-  for (int i = 0; i < prerender.num_zoom_levels; i++) {
-    printf("%d ", prerender.zoom[i]);
-  }
-
-  printf("\n\tcoordinates: ");
-
-  for (int i = 0; i < prerender.num_points; i++) {
-    printf("(%.4f, %.4f) ", prerender.points[i].x, prerender.points[i].y);
-  }
-
-  printf("\n");
-
   const int num_points = prerender.num_points;
   std::vector<vec2d> coordinates;
   coordinates.reserve(num_points);
@@ -75,7 +62,7 @@ void process_prerender(tilelite* context, tl_prerender prerender) {
     }
   }
 
-  printf("prerender queued; total indices: %llu\n", total_indices);
+  tl_log("prerender queued; total indices: %llu", total_indices);
 
   free(prerender.points);
 }
@@ -134,7 +121,7 @@ void tilelite::thread_job(image_db* db, const tilelite_config* conf) {
   tile_renderer renderer;
   if (conf->at("rendering") == "1") {
     if (!tile_renderer_init(&renderer, mapnik_xml_path.c_str())) {
-      fprintf(stderr, "failed to initialize renderer\n");
+      tl_log("failed to initialize renderer");
       return;
     }
   }
@@ -155,10 +142,10 @@ void tilelite::thread_job(image_db* db, const tilelite_config* conf) {
               send_image(req.client_fd, &img);
               int64_t processing_time_us = tl_usec_now() - req.request_time;
               if (processing_time_us > 1000) {
-                printf("[%d, %d, %d, %d, %d] (%d bytes) | %.2f ms\n", t.w, t.h, t.z,
+                tl_log("[%d, %d, %d, %d, %d] (%d bytes) | %.2f ms", t.w, t.h, t.z,
                        t.x, t.y, img.len, double(processing_time_us) / 1000.0);
               } else {
-                printf("[%d, %d, %d, %d, %d] (%d bytes) | %lld us\n", t.w, t.h, t.z, t.x,
+                tl_log("[%d, %d, %d, %d, %d] (%d bytes) | %lld us", t.w, t.h, t.z, t.x,
                        t.y, img.len, processing_time_us);
               }
               free(img.data);

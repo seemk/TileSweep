@@ -12,6 +12,7 @@
 #include <rapidjson/document.h>
 #include <mapnik/debug.hpp>
 #include "parg/parg.h"
+#include "tl_log.h"
 
 #ifdef TILELITE_EPOLL
 #include "ev_loop_epoll.h"
@@ -98,23 +99,23 @@ tl_request read_request(const char* data, int len) {
   rj::Document doc;
   doc.Parse(data, len);
 
-  printf("%.*s\n", len, data);
+  tl_log("%.*s", len, data);
 
   if (doc.HasParseError() || !doc.IsObject()) {
-    printf("invalid JSON\n");
+    tl_log("invalid JSON");
     return req;
   }
 
   if (!(doc.HasMember("type") && doc.HasMember("content") &&
         doc["type"].IsNumber() && doc["content"].IsObject())) {
-    printf("invalid request\n");
+    tl_log("invalid request");
     return req;
   }
 
   req.type = tl_request_type(doc["type"].GetUint64());
 
   if (req.type == rq_invalid || req.type >= RQ_COUNT) {
-    printf("invalid request type\n");
+    tl_log("invalid request type");
     req.type = rq_invalid;
     return req;
   }
@@ -142,7 +143,7 @@ tilelite_config parse_args(int argc, char** argv) {
   parg_init(&args);
 
   auto usage = []() {
-    printf("Usage: tilelite [-c conf_path] [-h]\n");
+    tl_log("Usage: tilelite [-c conf_path] [-h]");
     exit(0);
   };
 
@@ -157,7 +158,7 @@ tilelite_config parse_args(int argc, char** argv) {
         break;
       case '?':
         if (args.optopt == 'c') {
-          fprintf(stderr, "Option '-c' requires an argument");
+          tl_log("Option '-c' requires an argument");
           usage();
         }
         break;
@@ -178,7 +179,7 @@ int main(int argc, char** argv) {
   tilelite_config conf = parse_args(argc, argv);
 
   if (ini_parse(conf["conf_file_path"].c_str(), ini_parse_callback, &conf) < 0) {
-    fprintf(stderr, "failed load configuration file\n");
+    tl_log("failed to load configuration file");
     return 1;
   }
 
@@ -199,7 +200,7 @@ int main(int argc, char** argv) {
   }
 
   if (listen(sfd, SOMAXCONN) == -1) {
-    perror("listen");
+    tl_log("listen failed: %s", strerror(errno));
     return 1;
   }
 

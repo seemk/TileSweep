@@ -7,12 +7,13 @@
 #include <stdio.h>
 #include <signal.h>
 #include <assert.h>
+#include "tl_log.h"
 
 int set_nonblocking(int fd) {
   int flags = fcntl(fd, F_GETFL, 0);
 
   if (flags == -1) {
-    perror("get fcntl");
+    tl_log("get fcntl: %s", strerror(errno)); 
     return -1;
   }
 
@@ -21,7 +22,7 @@ int set_nonblocking(int fd) {
   int res = fcntl(fd, F_SETFL, flags);
 
   if (res == -1) {
-    perror("set fcntl");
+    tl_log("set fcntl: %s", strerror(errno)); 
     return -1;
   }
 
@@ -39,7 +40,7 @@ bool ev_loop_epoll_init(ev_loop_epoll* loop, int socket) {
   loop->efd = epoll_create1(0);
 
   if (loop->efd == -1) {
-    perror("epoll create");
+    tl_log("epoll create: %s", strerror(errno));
     return false;
   }
 
@@ -49,7 +50,7 @@ bool ev_loop_epoll_init(ev_loop_epoll* loop, int socket) {
   res = epoll_ctl(loop->efd, EPOLL_CTL_ADD, socket, &ev);
 
   if (res == -1) {
-    perror("epoll ctl");
+    tl_log("epoll ctl: %s", strerror(errno));
     return false;
   }
 
@@ -61,7 +62,7 @@ bool ev_loop_epoll_init(ev_loop_epoll* loop, int socket) {
   int sig_fd = signalfd(-1, &signals, SFD_NONBLOCK);
 
   if (sig_fd == -1) {
-    perror("signalfd creation: ");
+    tl_log("signalfd creation: %s", strerror(errno));
     return false;
   }
 
@@ -69,7 +70,7 @@ bool ev_loop_epoll_init(ev_loop_epoll* loop, int socket) {
   sig_event.data.fd = sig_fd;
   sig_event.events = EPOLLIN;
   if (epoll_ctl(loop->efd, EPOLL_CTL_ADD, sig_fd, &sig_event) == -1) {
-    perror("signalfd epoll failure: ");
+    tl_log("signalfd epoll failure: %s", strerror(errno));
     return false;
   }
 
@@ -116,7 +117,7 @@ void ev_loop_epoll_run(ev_loop_epoll* loop,
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
               break;
             } else {
-              perror("error accepting connection: ");
+              tl_log("error accepting connection: %s", strerror(errno));
               break;
             }
           }
@@ -126,13 +127,13 @@ void ev_loop_epoll_run(ev_loop_epoll* loop,
                                 sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
 
           if (res == 0) {
-            printf("connection from %s:%s\n", hbuf, sbuf);
+            tl_log("connection from %s:%s", hbuf, sbuf);
           }
 
           res = set_nonblocking(client_fd);
 
           if (res == -1) {
-            fprintf(stderr, "failed to set client nonblocking\n");
+            tl_log("failed to set client nonblocking");
             break;
           }
 
@@ -143,7 +144,7 @@ void ev_loop_epoll_run(ev_loop_epoll* loop,
           res = epoll_ctl(loop->efd, EPOLL_CTL_ADD, client_fd, &event);
 
           if (res == -1) {
-            perror("epoll client add");
+            tl_log("epoll client add: %s", strerror(errno));
             break;
           }
         }
@@ -156,12 +157,12 @@ void ev_loop_epoll_run(ev_loop_epoll* loop,
           ssize_t num_bytes = read(ev->data.fd, buf + total_read, remain);
           if (num_bytes == -1) {
             if (errno != EAGAIN) {
-              perror("fd read");
+              tl_log("fd read: %s", strerror(errno));
               close(ev->data.fd);
             }
             break;
           } else if (num_bytes == 0) {
-            printf("Client on FD %d closed\n", ev->data.fd);
+            tl_log("Client on FD %d closed", ev->data.fd);
             close(ev->data.fd);
             break;
           } else {

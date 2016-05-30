@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <netdb.h>
 #include <unistd.h>
+#include "tl_log.h"
 
 int bind_tcp(const char* port) {
   struct addrinfo hints;
@@ -18,7 +19,7 @@ int bind_tcp(const char* port) {
   int rv = getaddrinfo(nullptr, port, &hints, &results);
 
   if (rv != 0) {
-    fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+    tl_log("getaddrinfo: %s", gai_strerror(rv));
     return -1;
   }
 
@@ -33,7 +34,7 @@ int bind_tcp(const char* port) {
 
     int enable = 1;
     if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0) {
-      fprintf(stderr, "setsockopt(SO_REUSEADDR) failed");
+      tl_log("setsockopt(SO_REUSEADDR) failed");
     }
 
     if (bind(fd, result->ai_addr, result->ai_addrlen) == 0) {
@@ -44,7 +45,7 @@ int bind_tcp(const char* port) {
   }
 
   if (result == nullptr) {
-    fprintf(stderr, "failed to bind socket\n");
+    tl_log("failed to bind socket");
     return -1;
   }
 

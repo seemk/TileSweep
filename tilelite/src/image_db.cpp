@@ -4,6 +4,7 @@
 #include <string.h>
 #include "sqlite3/sqlite3.h"
 #include "image.h"
+#include "tl_log.h"
 
 image_db* image_db_open(const char* db_file) {
   sqlite3* sqlite_db = nullptr;
@@ -19,7 +20,7 @@ image_db* image_db_open(const char* db_file) {
                      &err_msg);
 
   if (res != SQLITE_OK) {
-    fprintf(stderr, "image_db: failued to set journal mode: %s\n", err_msg);
+    tl_log("image_db: failued to set journal mode: %s", err_msg);
     return nullptr;
   }
 
@@ -38,7 +39,7 @@ image_db* image_db_open(const char* db_file) {
       nullptr, nullptr, &err_msg);
 
   if (res != SQLITE_OK) {
-    fprintf(stderr, "%s\n", err_msg);
+    tl_log("%s", err_msg);
     sqlite3_close_v2(sqlite_db);
     return nullptr;
   }
@@ -52,7 +53,7 @@ image_db* image_db_open(const char* db_file) {
                            -1, &fetch_query, nullptr);
 
   if (res != SQLITE_OK) {
-    fprintf(stderr, "%s\n", sqlite3_errmsg(sqlite_db));
+    tl_log("%s", sqlite3_errmsg(sqlite_db));
     sqlite3_close_v2(sqlite_db);
     return nullptr;
   }
@@ -62,7 +63,7 @@ image_db* image_db_open(const char* db_file) {
                            &insert_position, nullptr);
 
   if (res != SQLITE_OK) {
-    fprintf(stderr, "%s\n", sqlite3_errmsg(sqlite_db));
+    tl_log("%s", sqlite3_errmsg(sqlite_db));
     sqlite3_close_v2(sqlite_db);
     return nullptr;
   }

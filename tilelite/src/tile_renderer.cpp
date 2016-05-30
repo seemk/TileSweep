@@ -9,6 +9,7 @@
 #include "image.h"
 #include "tl_request.h"
 #include "tl_math.h"
+#include "tl_log.h"
 
 bool register_plugins(const char* plugins_path) {
   mapnik::datasource_cache::instance().register_datasources(plugins_path);
@@ -24,7 +25,7 @@ bool tile_renderer_init(tile_renderer* renderer, const char* mapnik_xml_path) {
   try {
     mapnik::load_map(*renderer->map, mapnik_xml_path);
   } catch (std::exception& e) {
-    fprintf(stderr, "mapnik load error: %s\n", e.what());
+    tl_log("mapnik load error: %s", e.what());
     delete renderer->map;
     renderer->map = nullptr;
     return false;
@@ -57,7 +58,7 @@ bool render_tile(tile_renderer* renderer, const tl_tile* tile, image* image) {
   try {
     ren.apply();
   } catch (std::exception& e) {
-    fprintf(stderr, "error rendering tile:\n %s\n", e.what());
+    tl_log("error rendering tile:\n %s", e.what());
     return false;
   }
 

@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include "tl_log.h"
 
-int bind_tcp(const char* port) {
+int bind_tcp(const char* host, const char* port) {
   struct addrinfo hints;
 
   memset(&hints, 0, sizeof(hints));
@@ -16,7 +16,7 @@ int bind_tcp(const char* port) {
   hints.ai_flags = AI_PASSIVE;
 
   struct addrinfo* results;
-  int rv = getaddrinfo(nullptr, port, &hints, &results);
+  int rv = getaddrinfo(host, port, &hints, &results);
 
   if (rv != 0) {
     tl_log("getaddrinfo: %s", gai_strerror(rv));

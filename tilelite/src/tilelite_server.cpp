@@ -90,6 +90,7 @@ void set_defaults(tilelite_config* conf) {
   set_key("fonts", "");
   set_key("threads", "1");
   set_key("tile_db", "tiles.db");
+  set_key("host", "127.0.0.1");
   set_key("port", "9567");
   set_key("rendering", "1");
 }
@@ -194,7 +195,10 @@ int main(int argc, char** argv) {
   set_signal_handler(SIGPIPE, SIG_IGN);
   set_signal_handler(SIGINT, SIG_IGN);
 
-  int sfd = bind_tcp(conf["port"].c_str());
+  const char* host = conf["host"].c_str();
+  const char* port = conf["port"].c_str();
+
+  int sfd = bind_tcp(host, port);
   if (sfd == -1) {
     return 1;
   }
@@ -203,6 +207,8 @@ int main(int argc, char** argv) {
     tl_log("listen failed: %s", strerror(errno));
     return 1;
   }
+
+  tl_log("Listening on %s:%s", host, port);
 
 #ifdef TILELITE_EPOLL
   ev_loop_epoll loop;

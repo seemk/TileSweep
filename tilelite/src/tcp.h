@@ -1,3 +1,3 @@
 #pragma once
 
-int bind_tcp(const char* port);
+int bind_tcp(const char* host, const char* port);

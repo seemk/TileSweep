@@ -1,0 +1,387 @@
+Revision history for H2O.
+
+2.1.0-beta2 TBD
+	- [fastcgi] setenv should displace HTTP headers #996 (Kazuho Oku)
+	- [http2] add support for `cache-digest` header #967 #988 (Kazuho Oku)
+	- [http2] fix buffer overrun #972 (Frederik Deweerdt)
+	- [http2] drop `host` header in HTTP/2 layer #973 #998 (Frederik Deweerdt, Kazuho Oku)
+	- [http2] fix assertion failure: `sock->super._cb.write != ((void *)0)' failed` #873 #966 #976 (Kazuho Oku)
+	- [http2] don't use etag for calculating casper cookie #986 (Kazuho Oku)
+	- [http2] validate characters used in the headers #974 (Frederik Deweerdt)
+	- [mruby] add dos_detector mruby handler #1013 (Ichito Nagata)
+	- [proxy] add an option to prevent emiting x-forwarded-* headers #999 (Frederik Deweerdt)
+	- [proxy] don't escape `:` in URI path #977 (Frederik Deweerdt)
+	- [proxy] preserve received URLs as much as possible #985 (Frederik Deweerdt)
+	- [ssl] set add_lock callback to prevent unnecessary lock-add-unlock #983 (Roberto Guimaraes)
+	- [misc] guess the default location of h2o.conf #969 (Davsid Carlier)
+	- [misc] fix build error when libuv is not found #1008 (nextgenthemes)
+	- [misc] fix assertion failure when YAML alias and merge is used in certain way #1011 (Kazuho Oku)
+	- [misc] allow to disable libuv even when it is found #995 (Frederik Deweerdt)
+
+2.1.0-beta1 2016-06-24 00:15:00+0000
+	- [http2][proxy] recognize link rel=preload headers in interim response as a trigger to push resources #916 (Kazuho Oku)
+	- [http2] add `http2-push-preload` directive to turn off H2 push being initiated by link rel=preload header #929 (Kazuho Oku)
+	- [http2][experimental] add feedback-based latency optimization mode #873 (Kazuho Oku)
+	- [status] collect and report HTTP statistics #893 (Frederik Deweerdt)
+	- [throttle] add new handler for throttling the response bandwidth #917 (Justin Zhu)
+	- [misc] provide `crash-handler` directive to customize crash logging #935 (Frederik Deweerdt)
+	- [libh2o] provide `h2o_rand` that calls the appropriate random function depending on the OS #927 (David CARLIER)
+	- [libh2o] do not require use of picohttpparser.h when using the HTTP/1 client #946 (Kazuho Oku)
+
+2.0.1 2016-06-23 22:00:00+0000
+	- [fastcgi] fix internal server error when PHP returns a huge header #958 (Kazuho Oku)
+	- [http2] recognize link header containing multiple links #950 (Frederik Deweerdt)
+	- [libh2o] fix resource leaks upon startup failure #936 (David CARLIER)
+	- [libh2o] do not require linking to libbrotli externally #941 (Kazuho Oku)
+
+2.0.0 2016-06-01 01:55:00+0000
+	- [core][breaking change] do not automatically append `/` to path-level configuration #820 (Kazuho Oku)
+	- [core] support `<<` in configuration file #786 (Kazuho Oku)
+	- [core] configurable server: header #877 (Frederik Deweerdt)
+	- [core] add directive for customizing the path of temporary buffer files #911 (Kazuho Oku)
+	- [core] fix crash when receiving SIGTERM during start-up #878 (Frederik Deweerdt)
+	- [core] spawn the configured number of DNS client threads #880 (Sean McArthur)
+	- [access-log] add directive for logging protocol-specific values #801 (Kazuho Oku)
+	- [access-log][fastcgi][mruby] per-request environment variables #868 (Kazuho Oku)
+	- [access-log] fix memory leak during start-up #864 (Frederik Deweerdt)
+	- [compress] on-the-fly compression using brotli, as well as directives to tune the compression parameters #802, #924 (Kazuho Oku, Frederik Deweerdt)
+	- [compress][expires] refrain from setting redundant `cache-control` tokens #846 (Kazuho Oku)
+	- [file] `file.file` directive for mapping specific file #822 (Kazuho Oku)
+	- [file] `send-compress` directive (renamed from `send-gzip`) to support pre-compressed files using brotli #802 (Kazuho Oku)
+	- [file] cache open failures #836 (Kazuho Oku)
+	- [http2] support for nopush attribute in the link rel=preload header #863 (Satoh Hiroh)
+	- [http2] support for push after delegation #866 (Kazuho Oku)
+	- [http2] ignore push indications made by a pushed response #897 (Kazuho Oku)
+	- [http2] accept `capacity-bits` attribute of the `http2-casper` configuration directive #882 (Satoh Hiroh)
+	- [http2] avoid memcpy during HPACK huffman encoding #749 (Kazuho Oku)
+	- [http2] fix potential stall when http2-max-concurrent-requests-per-connection is set to a small number #912 (Kazuho Oku)
+	- [http2] refuse push a single resource more than once #903 (Kazuho Oku)
+	- [http2] fix assertion failure when receiving more data than expected during upgrade #922 (Frederik Deweerdt)
+	- [mruby] add $H2O_ROOT/share/h2o/mruby to the default load path #851 (Kazuho Oku)
+	- [proxy] add support for HTTPS #875 (Kazuho Oku)
+	- [proxy] add an configuration option to pass through `x-forwarded-proto` request header #883 (Kazuho Oku)
+	- [proxy] log error when upstream connection is unexpectedly closed #895 (Frederik Deweerdt)
+	- [ssl] update libressl to 2.2.7 #898 (Kazuho Oku)
+	- [ssl] support ECDH curves other than P-256 #841 (Kazuho Oku)
+	- [ssl] add support for text-based memcache protocol #854 (Kazuho Oku)
+	- [ssl] fix memory leak when using TLS resumption with the memcached backend #856 (Kazuho Oku)
+	- [ssl] fix "undefined subroutine" error in the OCSP updater #872 (Masayuki Matsuki)
+	- [ssl] cap the number of OCSP updaters running concurrently #891 (Kazuho Oku)
+	- [ssl] fix use-after-free when using session resumption with memcached backend #923 (Frederik Deweerdt)
+	- [libh2o] add API for obtaining the socket descriptor #886 (Frederik Deweerdt)
+	- [libh2o] add API to selectively disable automated I/O on reads and writes #890 (Frederik Deweerdt)
+	- [libh2o] bugfix: h2o_mem_swap swaps only the first 256 bytes #924 (Frederik Deweerdt)
+	- [status] introduce the status handler #848 (Kazuho Oku)
+	- [misc] install examples #850 (James Rouzier)
+
+1.7.3 2016-05-26 02:32:00+0000
+	- [security fix][http2] fix use-after-free on premature connection close (CVE-2016-4817) #920 (Frederik Deweerdt)
+	- [core] fix SIGBUS when temporary disk space is full #910 (Kazuho Oku)
+	- [mruby] do not drop `link` header #913 (Kazuho Oku)
+	- [mruby] fix memory leak during initialization #906 (Frederik Deweerdt)
+	- [mruby] fix race condition in mruby regex handler #908 (Kazuho Oku)
+	- [libh2o] fix crash in h2o_url_stringify #918 (Kazuho OKu)
+
+1.7.2 2016-05-09 03:12:00+0000
+	- [core] fix crash when receiving SIGTERM during start-up #878 (Frederik Deweerdt)
+	- [core] spawn the configured number of DNS client threads #880 (Sean McArthur)
+	- [http2] accept `capacity-bits` attribute of the `http2-casper` configuration directive #882 (Satoh Hiroh)
+	- [ssl] update libressl to 2.2.7 #898 (Kazuho Oku)
+	- [ssl] fix memory leak when using TLS resumption with the memcached backend #856 (Kazuho Oku)
+	- [ssl] fix "undefined subroutine" error in the OCSP updater #872 (Masayuki Matsuki)
+
+1.7.1 2016-03-07 06:50:00+0000
+	- [core] fix incorrect line no. reported in case of YAML syntax error #785 (Kazuho Oku)
+	- [core] fix build issue / memory leak when the poll backend is used #777 #787 (devlearner)
+	- [core] when building, repect `EXTRA_LIBS` passed from command line #793 (Kazuho Oku)
+	- [core] fix memory leaks during start-up #792 (Domingo Alvarez Duarte)
+	- [core] fix stability issue when receiving a signal #799 (Kazuho Oku)
+	- [fastcgi] fix off-by-one buffer overflow #762 (Domingo Alvarez Duarte)
+	- [fastcgi][mruby] install missing script files #791 #798 (AIZAWA Hina)
+	- [mruby] truncate body to the size specified by `content-length` #778 (Kazuho Oku)
+	- [mruby] fix error when reading a ruby script >= 64K #824 (Domingo Alvarez Duarte)
+	- [proxy] fix I/O error when transferring files over 2GB on FreeBSD / OS X #821 #834 (Kazuho Oku)
+	- [ssl] bugfix: use of session ticket not disabled even when configured to #819 #835 (Kazuho Oku)
+	- [libh2o] provide pkg-config .pc files #743 (OGINO Masanori)
+	- [libh2o] include version numbers in the .so filename #794 (Matt Clarkson)
+	- [doc] refine documentation #601 #746 #748 #766 #781 #811
+
+1.7.0 2016-02-05 02:03:00+0000
+	- [core] support for wildcard hostnames #634 (Kazuho Oku)
+	- [core][file] preserve query paramaters upon redirection to a directory #690 (Tatsuhiro Tsujikawa)
+	- [core] use uppercase letters in URI-escape sequence #695 (Kazuho Oku)
+	- [core] forbid duplicates in `hosts` section #709 (Kazuho Oku)
+	- [fastcgi] add support for CGI #618 (Kazuho Oku)
+	- [fastcgi] drop transfer-encoding header #641 (Kazuho Oku)
+	- [file] fix a bug that caused `file.mime.addtypes` to fail setting the attributes of a content-type #731 (Kazuho Oku)
+	- [http2] fix broken `PUSH_PROMISE` frames being sent under high pressure #734 #737 (Kazuho Oku)
+	- [mruby] provide `env["rack.input"]` #515 #638 #644 (Masayoshi Takahashi, Kazuho Oku)
+	- [mruby] HTTP client API #637 #643 (Kazuho Oku)
+	- [mruby] dump the ruby source on error #631 (Kazuho Oku)
+	- [mruby] provide access to `$H2O_ROOT` #629 (Kazuho Oku)
+	- [mruby] change mrb_int to 64-bit on 64-bit systems #639 (Kazuho Oku)
+	- [mruby] concatenate request headers having same name #666 (Kazuho Oku)
+	- [mruby] bundle mruby-errno, mruby-file-stat #675 (Kazuho Oku)
+	- [mruby] refrain from building mruby handler by default if mkmf (part of ruby dev files) is not found #710 (Kazuho Oku)
+	- [proxy] detect upstream close of pooled socket before reuse #679 (Kazuho Oku)
+	- [reproxy] add support for relative URI #712 (Kazuho Oku)
+	- [ssl] turn on neverbleed by default #633 (Kazuho Oku)
+	- [libh2o] fix memory leaks during destruction #724 (greatwar)
+	- [libh2o] simplify vector operations #715 #735 (Domingo Alvarez Duarte)
+	- [misc] support basic authentication using .htpasswd #624 (Kazuho Oku)
+	- [misc] fix build error when an older version of H2O is installed aside an external dependency #718 #722 #736 (Kazuho Oku)
+
+1.6.3 2016-01-26 07:46:00+0000
+	- [fastcgi][proxy] fix double-free issue during configuration phase #723 (Kazuho Oku)
+	- [proxy] fix response getting truncated when neither content-length nor transfer-encoding is used #725 (Kazuho Oku)
+	- [websocket] fix crash when access-log is enabled #698 (Shota Fukumori)
+
+1.6.2 2016-01-13 06:24:00+0000
+	- [security fix][redirect] uri-escape the user-supplied portion of the redirect path (CVE-2016-1133) #682 #684 (Kazuho Oku)
+	- [core] fix error when trying to set multiple error documents using one `error-doc` directive #676 (Yamagishi Kazutoshi)
+	- [file] fix a bug that incorrectly returns 403 when a file is requested with a trailing slash #686 (Yamagishi Kazutoshi)
+	- [http2] fix HPACK encoder error (and crash) when trying to encode a token wo. hpack index #640 (Kazuho Oku)
+	- [libh2o] fix race condition during multithread receiver (un)registration #659 (Chul-Woong Yang)
+	- [libh2o] fix memory leak on dispose #683 (Kazuho Oku)
+
+1.6.1 2015-12-18 05:05:00+0000
+	- [misc] fix build error on armv8a #628 (Kazuho Oku)
+	- [misc] fix build error when libuv < 1.0.0 is installed #630 (Kazuho Oku)
+
+1.6.0 2015-12-04 05:47:00+0000
+	- [core] customized error pages #606 (Kazuho Oku)
+	- [core] fix busy loop when receiving RST packet under certain conditions #603 (Kazuho Oku)
+	- [access-log] collect and log various timings #583 (Kazuho Oku)
+	- [access-log] support '%A' and '%p' #585 (Kazuho Oku)
+	- [access-log] support '%{...}t' compatibile with Apache HTTP Server #587 (Kazuho Oku)
+	- [fastcgi] increase backlog size the bundled fastcgi server #588 (Kazuho Oku)
+	- [fastcgi] fix uninitialized memory access / memory leak during startup #611 (Kazuho Oku)
+	- [file] implement file descriptor cache #596 (Kazuho Oku)
+	- [http2] increase incoming window size from 256KB to 16MB #582 (Kazuho Oku)
+	- [http2] decrease memory footprint (and speedup) #599 (Kazuho Oku)
+	- [http2] start server push before the response headers for the original request becomes ready #593 (Kazuho Oku)
+	- [http2] fix issues reported by h2spec 1.2.0 #595 (Kazuho Oku)
+	- [http2] fix NULL access when an error during upgrade from HTTP/1 #607 (Kazuho Oku)
+	- [http2] fix too-many-streams error with h2load #608 (Kazuho Oku)
+	- [websocket] support proxying websocket connections #581 (Justin Zhu)
+	- [libh2o] fix compiler warnings #598 (Matt Clarkson, Kazuho Oku)
+	- [misc] downgrade required CMake version to 2.8.11 #594 (Kazuho Oku)
+
+1.5.4 2015-11-12 04:05:00+0000
+        - [access-log] do not emit protocol and authority for `%U` #586 (Kazuho Oku)
+        - [ssl] fix handshake failure with older versions of Android (2.x) #591 (Kazuho Oku)
+
+1.5.3 2015-11-06 04:30:00+0000
+	- [core] decode url-encoded character at the end of path #567 (Kazuho Oku)
+	- [access-log] fix startup failure on OSX when configured to emit to pipe #580 (Kazuho Oku)
+	- [http2] fix memory / state corruption in HPACK encoder #571 (Tatsuhiro Tsujikawa, Kazuho Oku)
+	- [http2] improve HPACK compression ratio #573 (Tatsuhiro Tsujikawa, Kazuho Oku)
+	- [http2] fix behavior when HEADERS frame specifies a stream not open as a dependency #575 (Kazuho Oku)
+	- [proxy] do not reset HTTP2 push paths when request is delegated to proxy #579 (Kazuho Oku)
+	- [ssl] include "http/1.1" in ALPN / NPN protocol selection list #578 (Kazuho Oku)
+
+1.5.2 2015-10-20 06:49:00+0000
+	- [http2] fix stall when only reprioritized streams are being transferred #564 (Kazuho Oku)
+
+1.5.1 2015-10-20 01:13:00+0000
+	- [file] fixed directory listing not alphabetically sorted #412 #474 #539 (Kazuho Oku)
+	- [file] mime-type lookup should be case-insensitive #561 (Kazuho Oku)
+	- [file] fix corrupt links in directory listing #562 (Kazuho Oku)
+	- [http1] preserve HTTP connection after redirect #552 (Kazuho Oku)
+	- [http2] fixed reprioritized streams (to highest) sometimes being interleaved with lower priority streams #550 (Kazuho Oku)
+	- [libh2o] add `-DWITHOUT_LIBS=ON` configuration option #551 (Kazuho Oku)
+	- [libh2o] adjustments to build libh2o in a subdirectory #556 (Futur Solo)
+	- [misc] rewrite setuidgid helper program in Perl #553 (Kazuho Oku)
+	- [misc] fix doc issues #530 #547 #549 (Masaki TAGAWA, Kazuho Oku, Kazu Yamamoto)
+
+1.5.0 2015-09-30 06:39:00+0000
+	- [http2] enable `http2-reprioritize-blocking-assets` by default #528 (Kazuho Oku)
+	- [ssl] fix issues with neverbleed #520 (Kazuho Oku)
+
+1.5.0-beta4 2015-09-23 03:36:00+0000
+	- [mruby] provide `env['rack.errors']`, `env['SERVER_SOFTWARE']` #517 #519 (Masayoshi Takahashi, Kazuho Oku)
+	- [ssl] add support for neverbleed - the OpenSSL / LibreSSL privilege separation engine #520 (Kazuho Oku)
+
+1.5.0-beta3 2015-09-18 03:44:00+0000
+	- [http2] fix crash when `http2-reprioritize-blocking-assets`, `file.custom-handler` are used together #511 #514 (Kazuho Oku)
+
+1.5.0-beta2 2015-09-16 07:00:00+0000
+	- [serurity fix][file] fix directory traversal (CVE-2015-5638) (Kazuho Oku)
+	- [mruby] fix build failure when oniguruma is already installed #501 #506 (Kazuho Oku)
+	- [mruby] update sample mruby app to use rack-based API #498 (Masayoshi Takahashi)
+
+1.5.0-beta1 2015-09-11 06:15:49+0000
+	- [core] introduce `is_compressible` and `priority` attributes to MIME map #436 #496 (Kazuho Oku)
+	- [access-log] fix bug that emitted unnecessary NUL char in certain conditions #462 #463 (Kazuho Oku)
+	- [fastcgi] support for http2 server-push using `link: rel=preload` header #446 (Kazuho Oku)
+	- [file] send `etag` and `vary` headers on 304 response #439 (Kazuho Oku)
+	- [file] sort directory listing #412 #474 (Kazuho Oku)
+	- [gzip] introduce support for on-the-fly gzip #413 #457 (Justin Zhu)
+	- [http2] introduce cookie-based implementation of cache-aware server-push #421 #432 (Kazuho Oku)
+	- [http2] improve HPACK compression ratio of server-push #450 (Kazuho Oku)
+	- [http2] never push if client requested not to #464 (Kazuho Oku)
+	- [http2] send `content-length` if possible #472 (Kazuho Oku)
+	- [mruby] production-level support using Rack-based interface #467 #475 #489 (Kazuho Oku)
+	- [reproxy] support delegation using relative URL #468 (Kazuho Oku)
+	- [reproxy] preserve method if status is 307 or 308 #491 (Kazuho Oku)
+	- [ssl] improved error handling of `openssl ocsp` command #449 #454 (Tatsuhiro Tsujikawa)
+	- [ssl] use libressl on ARM as well #485 (Kazuho Oku)
+
+1.4.4 2015-08-17 21:45:00+0000
+	- [misc] fix install error of libh2o-evloop in case development files of OpenSSL cannot be found #443 (Kazuho Oku)
+
+1.4.3 2015-08-17 01:25:00+0000
+	- [fastcgi] change ownership of domain socket when `fastcgi.spawn` command is used #443 (Masaki TAGAWA)
+	- [fastcgi] kill fastcgi processes spawned by `fastcgi.spawn` command when standalone server receives SIGINT #444 (Kazuho Oku)
+	- [file] fix file descriptor leak on multi-range request #434 (Justin Zhu)
+	- [ssl] update libressl to 2.2.2 #440 (Kazuho Oku)
+	- [misc] fix build error in case development files of OpenSSL cannot be found #433 (Kazuho Oku)
+
+1.4.2 2015-07-28 08:02:00+0000
+	- [fastcgi] do not concatenate the headers (ex. Set-Cookie) sent by a FastCGI app #427 (Kazuho Oku)
+	- [ssl] for guarding session ticket secret use writer-preferred locks on Linux as well #423 (Kazuho Oku)
+	- [misc] suppress compiler warnings #415 (Syohei YOSHIDA)
+
+1.4.1 2015-07-22 11:55:00+0000
+	- [core] respect the value of the `user` configuration directive (was always switching to `nobody`) #416 (Kazuho Oku)
+
+1.4.0 2015-07-22 09:41:00+0000
+	- [core] add support for the PROXY protocol #386 #389 (Kazuho Oku)
+	- [core] drop privileges if run as root without `user` directive #410 (Kazuho Oku)
+	- [fastcgi] pass `HTTPS: on` to FastCGI application if the scheme is HTTPS #379 (Kazuho Oku)
+	- [fastcgi] drop privileges of the fastcgi process spawned by `fastcgi.spawn` #414 (Kazuho Oku)
+	- [mruby] introduce experimental mruby handler #378 #387 #399 #402 #404 #408 (Ryosuke Matsumoto)
+	- [proxy] support application server listening to unix-domain socket #383 (Kazuho Oku)
+	- [SSL] implement session cache using memcached #391 #395 (Kazuho Oku)
+	- [SSL] session ticket with automatic rollover, file-based and memcached-based sharing #395 #400 (Kazuho Oku)
+	- [SSL] fix server crash during startup if more than 4 certificates are used #375 (Kazuho Oku)
+	- [misc] support for musl (C runtime running on Linux other than glibc) #374 (Bennett Goble)
+	- [misc] do not spawn processes / create files unless the server is starting #381 (Kazuho Oku)
+	- [misc] support for OpenIndiana (and other Solaris-based OS) #384 (Kazuho Oku)
+	- [misc] replace select-based backend with poll #385 (Kazuho Oku)
+	- [misc] update libyaml to 0.1.6 #379 (Martell Malone)
+
+1.3.1 2015-06-19 03:35:00+0000
+	- [core] do not refuse to start-up when failing to enable TCP Fast Open #368 (Kazuho Oku)
+	- [fastcgi] fix server start-up issues when using `fastcgi.spawn` #367 (Kazuho Oku)
+	- [SSL] support OCSP stapling using `openssl ocsp` command built from LibreSSL in addition to OpenSSL #366 (Tatsuhiro Tsujikawa)
+
+1.3.0 2015-06-17 21:53:00+0000
+	- [core] enable TCP fast-open #356 (Tatsuhiko Kubo)
+	- [core] improve virtual-host lookup logic #293 #296 (Kazuho Oku)
+	- [core] fix content being mis-sent for HEAD requests #300 #302 (Kazuho Oku)
+	- [doc] bundle documents #292 (Kazuho Oku)
+	- [fastcgi] add FastCGI support #346 #359 #360 #364 (Kazuho Oku)
+	- [file] support for `If-Range` requests #345 (Justin Zhu)
+	- [file] send 503 (not 403) in case if too many files are open #304 (Kazuho Oku)
+	- [http2] add `http2-reprioritize-blocking-assets` directive to optimize first-paint time on Chrome #349 (Kazuho Oku)
+	- [http2] fix incompliant behavior when the number of stream exceeds the negotiated maximum #341 #352 (Kazuho Oku)
+	- [proxy] fix potential use-after-free issue in case upstream name is resolved using getaddrinfo #307 (Kazuho Oku)
+	- [proxy] increase default I/O timeout from 5 to 30 seconds fb5c016 (Kazuho Oku)
+	- [redirect] support internal redirect #364 (Kazuho Oku)
+	- [SSL] fix assertion failure during handshake #316 (Kazuho Oku)
+	- [SSL] fix assertion failure when receiving a corrupt TLS record (http2 only) #297 (Kazuho Oku)
+	- [SSL] fix build error on OpenSUSE using libressl #337 (Kazuho Oku)
+	- [SSL] select ALPN protocol based on server-side preference #335 (Justin Zhu)
+	- [libh2o] build shared libraries as well #324 (pyos)
+	- [libh2o] build libh2o-evloop #327 (Laurentiu Nicola)
+	- [misc] emit stacktrace in case of fatal error (Linux only) #331 (Kazuho Oku)
+	- [misc] improve NetBSD compatibility #289 (Kazuho Oku)
+	- [misc] fix file descriptor leaks #336 (Kazuho Oku)
+
+1.2.0 2015-04-14 07:13:00+0000
+	- [core] bundle libyaml #248 (Kazuho Oku)
+	- [core] implement master-worker process mode and daemon mode (bundles Server::Starter) #258 #270 (Kazuho Oku)
+	- [file] more mime-types by default #250 #254 #280 (Tatsuhiko Kubo, George Liu, Kazuho Oku)
+	- [file][http1] fix connection being closed if the length of content is zero #276 (Kazuho Oku)
+	- [headers] fix heap overrun during configuration #251 (Kazuho Oku)
+	- [http2] do not delay sending PUSH_PROMISE #221 (Kazuho Oku)
+	- [http2] reduce memory footprint under high load #271 (Kazuho Oku)
+	- [http2] fix incorrect error sent when number of streams exceed the limit #268 (Kazuho Oku)
+	- [proxy] fix heap overrun when building request sent to upstream #266 #269 (Moto Ishizawa, Kazuho Oku)
+	- [proxy] fix laggy response in case the length of content is zero #274 #276 (Kazuho Oku)
+	- [SSL] fix potential stall while reading data from client #268 (Kazuho Oku)
+	- [SSL] bundle LibreSSL #236 #272 (Kazuho Oku)
+	- [SSL] obtain source-level compatibility with BoringSSL #228 (Kazuho Oku)
+	- [SSL] add directive `listen.ssl.cipher-preference` for controlling the selection logic of cipher-suites #233 (Kazuho Oku)
+	- [SSL] disable TLS compression #252 (bisho)
+	- [libh2o] fix C++ compatibility (do not use empty struct) #225 (Kazuho Oku)
+	- [libh2o] search external dependencies using pkg-config #227 (Kazuho Oku)
+	- [misc] fix GCC version detection bug used for controlling compiler warnings #224 (Kazuho Oku)
+	- [misc] check merory allocation failures in socket pool #265 (Tatsuhiko Kubo)
+
+1.1.1 2015-03-09 06:12:00+0000
+	- [proxy] fix crash on NetBSD when upstream connection is persistent #217 (Kazuho Oku)
+	- [misc] fix compile error on FreeBSD #211 #212 (Syohei Yoshida)
+
+1.1.0 2015-03-06 06:41:00+0000
+	- [core][file] send redirects appending '/' as abs-path redirects #209 (Kazuho Oku)
+	- [headers] add directives for manipulating response headers #204 (Kazuho Oku)
+	- [http2] do not send a corrupt response if header value is longer than 126 bytes #193 (Kazuho Oku)
+	- [http2] fix interoperability issue with nghttp2 0.7.5 and above 5c42eb1 (Kazuho Oku)
+	- [proxy] send `via` header to upstream #191 (Kazuho Oku)
+	- [proxy] resolve hostname asynchronously #207 (Kazuho Oku)
+	- [proxy] distribute load between upstream servers (using `rand()`) #208 (Kazuho Oku)
+	- [proxy] fix a bug that may cause a corrupt `location` header being forwarded #190 (Kazuho Oku)
+	- [reproxy] add support for `x-reproxy-url` header #187 #197 (Daisuke Maki, Kazuho Oku)
+
+1.0.1 2015-02-23 05:50:00+0000
+	- [core] change backlog size from 65,536 to 65,535 #183 (Tatsuhiko Kubo)
+	- [http2] fix assertion failure in HPACK encoder #186 (Kazuho Oku)
+	- [http2] add `extern` to some global variables that were not marked as such #178 (Kazuho Oku)
+	- [proxy] close persistent upstream connection if client abruptly closes the stream #188 (Kazuho Oku)
+	- [proxy] fix internal state corruption in case upstream sends response headers divided into multpile packets #189 (Kazuho Oku)
+	- [SSL] add host header to OCSP request #176 (Masaaki Hirose)
+	- [libh2o] do not require header files under `deps/` when using libh2o #173 (Kazuho Oku)
+	- [libh2o] fix compile error in examples when compiled with `H2O_USE_LIBUV=0` #177 (Kazuho Oku)
+	- [libh2o] in example, add missing / after the reference path #180 (Matthieu Garrigues)
+	- [misc] fix invalid HTML in sample page #175 (Deepak Prakash)
+
+1.0.0 2015-02-18 20:01:00+0000
+	- [core] add redirect handler #150 (Kazuho Oku)
+	- [core] add `pid-file` directive for specifying the pid file #164 (Kazuho Oku)
+	- [core] connections accepted by host-specific listeners should not be handled by handlers of other hosts #163 (Kazuho Oku)
+	- [core] (FreeBSD) fix a bug that prevented the standalone server from booting when run as root #160 (Kazuho Oku)
+	- [core] switch to pipe-based interthread messaging #154 (Kazuho Oku)
+	- [core] use kqueue on all BSDs #156 (Kazuho Oku)
+	- [access-log] more logging directives: %H, %m, %q, %U, %V, %v #158 (Kazuho Oku)
+	- [access-log] bugfix: header values were not logged when specified using uppercase letters #157 (Kazuho Oku)
+	- [file] add application/json to defalt MIME-types #159 (Tatsuhiko Kubo)
+	- [http2] add support for the finalized version of HTTP/2 #166 (Kazuho Oku)
+	- [http2] fix issues reported by h2spec v0.0.6 #165 (Kazuho Oku)
+	- [proxy] merge the cookie headers before sending to upstream #161 (Kazuho Oku)
+	- [proxy] simplify the configuration directives (and make persistent upstream connections as default) #162 (Kazuho Oku)
+	- [SSL] add configuration directive to preload DH params #148 (Jeff Marrison)
+	- [libh2o] separate versioning scheme using H2O_LIBRARY_VERSION_* #167 (Kazuho Oku)
+
+0.9.2 2015-02-10 04:17:00+0000
+	- [core] graceful shutdown on SIGTERM #119 (Kazuho Oku)
+	- [core] less TCP errors under high load #81 (Kazuho Oku)
+	- [file] add support for HEAD requests #110 (Mark Hoersken)
+	- [http1] MSIE workaround (send `Cache-Control: private` in place of Vary) #114 (Kazuho Oku)
+	- [http2] support server-push #133 (Kazuho Oku)
+	- [http2] fix spurious RST_STREAMS being sent #132 (Kazuho Oku)
+	- [http2] weight-based distribution of bandwidth #135 (Kazuho Oku)
+	- [proxy] added configuration directive `proxy.preserve-host` #112 (Masahiro Nagano)
+	- [proxy] sends X-Forwarded-For and X-Forwarded-Proto headers #112 (Masahiro Nagano)
+	- [proxy] stability improvements #61 (Kazuho Oku)
+	- [misc] adjustments to make the source code more analyzer-friendly #113,#117 (Nick Desaulniers, Maks Naumov)
+
+0.9.1 2015-01-19 21:13:00+0000
+	- added configuration directives: ssl/cipher-suite, ssl/ocsp-update-interval, ssl/ocsp-max-failures, expires, file.send-gzip
+	- [http2] added support for draft-16 (draft-14 is also supported)
+	- [http2] dependency-based prioritization
+	- [http2] improved conformance to the specification
+	- [SSL] OCSP stapling (automatically enabled by default)
+	- [SSL] fix compile error with OpenSSL below version 1.0.1
+	- [file] content negotiation (serving .gz files)
+	- [expires] added support for Cache-Control: max-age
+	- [libh2o] libh2o and the header files installed by `make install`
+	- [libh2o] fix compile error when used from C++
+	- automatically setuids to nobody when run as root and if `user` directive is not set
+	- automatically raises RLIMIT_NOFILE
+	- uses all CPU cores by default
+	- now compiles on NetBSD and other BSD-based systems
+
+0.9.0 2014-12-25 20:17:00+0000
+	- initial release

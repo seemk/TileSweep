@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <signal.h>
 #include <assert.h>
+#include <string.h>
 #include "tl_log.h"
 
 int set_nonblocking(int fd) {

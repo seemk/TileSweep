@@ -15,15 +15,17 @@ enum tl_request_type : uint64_t {
 };
 
 struct tl_tile {
-  int z;
-  int x;
-  int y;
   int w;
   int h;
+  int x;
+  int y;
+  int z;
 
-  uint64_t hash() {
+  uint64_t hash() const {
     return (uint64_t(z) << 40) | (uint64_t(x) << 20) | uint64_t(y);
   }
+
+  bool valid() const { return w > -1 && h > -1 && x > -1 && y > -1 && z > -1; }
 };
 
 struct tl_prerender {
@@ -37,7 +39,7 @@ struct tl_prerender {
 
 union tl_request_union {
   tl_tile tile;
-  tl_prerender prerender; 
+  tl_prerender prerender;
 };
 
 struct tl_request {

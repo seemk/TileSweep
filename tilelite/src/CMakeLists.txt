@@ -21,27 +21,25 @@ else()
   message(FATAL_ERROR "epoll or kqueue required")
 endif()
 
-add_definitions(-DLODEPNG_NO_COMPILE_CPP)
-
-add_executable(tilelite
-  hit_test.cpp
-  tilelite_server.cpp
-  ${LOOP_SRC}
-  tcp.cpp
-  tilelite.cpp
-  tile_renderer.cpp
-  tl_math.cpp
-  tl_time.cpp
-  image_db.cpp
-
-  parg/parg.c
-
-  prerender.cpp
-  send.cpp
-
-  hash/MurmurHash2.cpp
-  ini/ini.c
-)
+#add_executable(tilelite
+#  hit_test.cpp
+#  tilelite_server.cpp
+#  ${LOOP_SRC}
+#  tcp.cpp
+#  tilelite.cpp
+#  tile_renderer.cpp
+#  tl_math.cpp
+#  tl_time.cpp
+#  image_db.cpp
+#
+#  parg/parg.c
+#
+#  prerender.cpp
+#  send.cpp
+#
+#  hash/MurmurHash2.cpp
+#  ini/ini.c
+#)
 
 add_executable(tests
   test/tests.cpp
@@ -49,11 +47,38 @@ add_executable(tests
   hit_test.cpp
 )
 
+add_executable(tlo
+  tlo.cpp
+  tcp.cpp
+  tilelite_config.cpp
+  tl_time.cpp
+
+  tile_renderer.cpp
+  tl_math.cpp
+
+  image_db.cpp
+
+  hash/xxhash.c
+
+  ini/ini.c
+  parg/parg.c
+)
+
 target_link_libraries(
-  tilelite
+  tlo
+  libh2o-evloop
   sqlite
   mapnik
   icuuc
   ${CMAKE_THREAD_LIBS_INIT}
   ${CMAKE_DL_LIBS}
 )
+
+#target_link_libraries(
+#  tilelite
+#  sqlite
+#  mapnik
+#  icuuc
+#  ${CMAKE_THREAD_LIBS_INIT}
+#  ${CMAKE_DL_LIBS}
+#)

@@ -1,9 +1,9 @@
 #include "tcp.h"
+#include <netdb.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <stdio.h>
-#include <netdb.h>
 #include <unistd.h>
 #include "tl_log.h"
 
@@ -37,7 +37,8 @@ int bind_tcp(const char* host, const char* port) {
       tl_log("setsockopt(SO_REUSEADDR) failed");
     }
 
-    if (bind(fd, result->ai_addr, result->ai_addrlen) == 0) {
+    if (bind(fd, result->ai_addr, result->ai_addrlen) == 0 &&
+        listen(fd, SOMAXCONN) == 0) {
       break;
     }
 

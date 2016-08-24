@@ -1,16 +1,15 @@
-#include "tilelite_config.h"
-#include "tl_log.h"
-#include "parg/parg.h"
+#include "tl_options.h"
 #include "ini/ini.h"
+#include "parg/parg.h"
+#include "tl_log.h"
 
-static void set_defaults(tilelite_config* conf) {
+static void set_defaults(tl_options* conf) {
   auto set_key = [conf](const char* key, const char* value) {
     if (conf->count(key) == 0) (*conf)[key] = value;
   };
 
   set_key("plugins", "");
   set_key("fonts", "");
-  set_key("threads", "1");
   set_key("tile_db", "tiles.db");
   set_key("host", "127.0.0.1");
   set_key("port", "9567");
@@ -19,15 +18,15 @@ static void set_defaults(tilelite_config* conf) {
 
 int ini_parse_callback(void* user, const char* section, const char* name,
                        const char* value) {
-  tilelite_config* conf = (tilelite_config*)user;
+  tl_options* conf = (tl_options*)user;
   (*conf)[name] = value;
 
   return 1;
 }
 
-tilelite_config parse_args(int argc, char** argv) {
-  tilelite_config conf;
-  
+tl_options parse_options(int argc, char** argv) {
+  tl_options conf;
+
   parg_state args;
   parg_init(&args);
 
@@ -61,7 +60,8 @@ tilelite_config parse_args(int argc, char** argv) {
     usage();
   }
 
-  if (ini_parse(conf["conf_file_path"].c_str(), ini_parse_callback, &conf) < 0) {
+  if (ini_parse(conf["conf_file_path"].c_str(), ini_parse_callback, &conf) <
+      0) {
     tl_log("failed to load configuration file");
     exit(1);
   }
@@ -70,4 +70,3 @@ tilelite_config parse_args(int argc, char** argv) {
 
   return conf;
 }
-

@@ -1,4 +1,4 @@
-#include <ctype.h>
+#include "tile.h"
 #include <fcntl.h>
 #include <h2o.h>
 #include "hash/xxhash.h"
@@ -6,9 +6,8 @@
 #include "image_db.h"
 #include "tcp.h"
 #include "tile_renderer.h"
-#include "tilelite_config.h"
 #include "tl_log.h"
-#include "tl_request.h"
+#include "tl_options.h"
 #include "tl_time.h"
 
 struct tl_h2o_ctx {
@@ -28,7 +27,7 @@ struct tilelite {
 
 static struct {
   h2o_globalconf_t globalconf;
-  tilelite_config* opt;
+  tl_options* opt;
   size_t num_threads;
   tilelite* threads;
 } conf = {0};
@@ -48,7 +47,7 @@ static void on_accept(h2o_socket_t* listener, const char* err) {
   h2o_accept(&tl->accept_ctx, socket);
 }
 
-void tilelite_init(tilelite* tl, const tilelite_config* opt) {
+void tilelite_init(tilelite* tl, const tl_options* opt) {
   if (opt->at("rendering") == "1") {
     tile_renderer_init(&tl->renderer, opt->at("mapnik_xml").c_str(),
                        opt->at("plugins").c_str(), opt->at("fonts").c_str());
@@ -65,70 +64,24 @@ void tilelite_init(tilelite* tl, const tilelite_config* opt) {
   h2o_socket_read_start(tl->socket, on_accept);
 }
 
-static int strntoi(const char* s, size_t len) {
-  int n = 0;
+static h2o_pathconf_t* register_handler(h2o_hostconf_t* conf, const char* path,
+                                        int (*on_req)(h2o_handler_t*,
+                                                      h2o_req_t*)) {
+  h2o_pathconf_t* path_conf = h2o_config_register_path(conf, path, 0);
+  h2o_handler_t* handler = h2o_create_handler(path_conf, sizeof(*handler));
+  handler->on_req = on_req;
 
-  for (size_t i = 0; i < len; i++) {
-    n = n * 10 + s[i] - '0';
-  }
-
-  return n;
+  return path_conf;
 }
 
-static tl_tile parse_tile(const char* s, size_t len) {
-  size_t begin = 0;
-  size_t end = 0;
-  int part = 0;
-  int parsing_num = 0;
-  int params[5] = {-1};
-
-  for (size_t i = 0; i < len; i++) {
-    if (isdigit(s[i])) {
-      if (!parsing_num) {
-        begin = i;
-        parsing_num = 1;
-      }
-      end = i;
-    } else {
-      if (parsing_num) {
-        params[part++] = int(strntoi(&s[begin], end - begin + 1));
-        parsing_num = 0;
-      }
-    }
-
-    if (i == len - 1 && parsing_num) {
-      params[part] = int(strntoi(&s[begin], end - begin + 1));
-    }
-  }
-
-  tl_tile t;
-  t.w = params[0];
-  t.h = params[1];
-  t.x = params[2];
-  t.y = params[3];
-  t.z = params[4];
-
-  return t;
-}
-
-static h2o_pathconf_t* RegisterHandler(h2o_hostconf_t* conf, const char* path,
-                                       int (*onReq)(h2o_handler_t*,
-                                                    h2o_req_t*)) {
-  h2o_pathconf_t* pathConf = h2o_config_register_path(conf, path, 0);
-  h2o_handler_t* handler = h2o_create_handler(pathConf, sizeof(*handler));
-  handler->on_req = onReq;
-
-  return pathConf;
-}
-
-static int ServeTile(h2o_handler_t*, h2o_req_t* req) {
+static int serve_tile(h2o_handler_t*, h2o_req_t* req) {
   tl_h2o_ctx* x = (tl_h2o_ctx*)req->conn->ctx;
   tilelite* tl = (tilelite*)x->user;
   int64_t req_start = tl_usec_now();
   h2o_generator_t gen = {NULL, NULL};
   req->res.status = 200;
   req->res.reason = "OK";
-  tl_tile t = parse_tile(req->path.base, req->path.len);
+  tile t = parse_tile(req->path.base, req->path.len);
 
   uint64_t pos_hash = t.hash();
   image img;
@@ -190,18 +143,17 @@ void* run_loop(void* arg) {
 }
 
 int main(int argc, char** argv) {
-  tilelite_config opt = parse_args(argc, argv);
+  tl_options opt = parse_options(argc, argv);
   conf.opt = &opt;
 
-  long t = sysconf(_SC_NPROCESSORS_ONLN);
-  conf.num_threads = t;
+  conf.num_threads = sysconf(_SC_NPROCESSORS_ONLN);
 
   conf.threads = (tilelite*)calloc(conf.num_threads, sizeof(tilelite));
   h2o_config_init(&conf.globalconf);
 
   h2o_hostconf_t* hostconf = h2o_config_register_host(
       &conf.globalconf, h2o_iovec_init(H2O_STRLIT("default")), 65535);
-  RegisterHandler(hostconf, "/", ServeTile);
+  register_handler(hostconf, "/", serve_tile);
 
   for (size_t i = 0; i < conf.num_threads; i++) {
     tilelite* tl = &conf.threads[i];

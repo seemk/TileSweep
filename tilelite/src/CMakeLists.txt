@@ -13,20 +13,17 @@ add_executable(tests
 )
 
 add_executable(tilelite
-  tilelite.cpp
-  tcp.cpp
-  tilelite_config.cpp
-  tl_time.cpp
-
-  tile_renderer.cpp
-  tl_math.cpp
-
-  image_db.cpp
-
   hash/xxhash.c
-
+  image_db.cpp
   ini/ini.c
   parg/parg.c
+  tcp.cpp
+  tile.cpp
+  tile_renderer.cpp
+  tilelite.cpp
+  tl_math.cpp
+  tl_options.cpp
+  tl_time.cpp
 )
 
 target_link_libraries(

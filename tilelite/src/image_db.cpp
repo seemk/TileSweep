@@ -1,27 +1,27 @@
 #include "image_db.h"
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include "sqlite3/sqlite3.h"
 #include "image.h"
 #include "tl_log.h"
+#include "sqlite3/sqlite3.h"
 
 image_db* image_db_open(const char* db_file) {
-  sqlite3* sqlite_db = nullptr;
+  sqlite3* sqlite_db = NULL;
   int res = sqlite3_open(db_file, &sqlite_db);
 
   if (res != SQLITE_OK) {
-    return nullptr;
+    return NULL;
   }
 
-  char* err_msg = nullptr;
+  char* err_msg = NULL;
 
-  res = sqlite3_exec(sqlite_db, "PRAGMA journal_mode=WAL", nullptr, nullptr,
-                     &err_msg);
+  res =
+      sqlite3_exec(sqlite_db, "PRAGMA journal_mode=WAL", NULL, NULL, &err_msg);
 
   if (res != SQLITE_OK) {
     tl_log("image_db: failued to set journal mode: %s", err_msg);
-    return nullptr;
+    return NULL;
   }
 
   res = sqlite3_exec(
@@ -36,41 +36,42 @@ image_db* image_db_open(const char* db_file) {
       "image_hash integer not null);"
       "CREATE INDEX IF NOT EXISTS tile_pos_hash_index ON tile (location_hash);"
       "CREATE INDEX IF NOT EXISTS tile_image_hash_index ON tile (image_hash);",
-      nullptr, nullptr, &err_msg);
+      NULL, NULL, &err_msg);
 
   if (res != SQLITE_OK) {
     tl_log("%s", err_msg);
     sqlite3_close_v2(sqlite_db);
-    return nullptr;
+    return NULL;
   }
 
-  sqlite3_stmt* fetch_query = nullptr;
+  sqlite3_stmt* fetch_query = NULL;
   res = sqlite3_prepare_v2(sqlite_db,
                            "SELECT image.data, image.width, image.height "
                            "FROM tile JOIN image ON tile.image_hash "
                            "= image.image_hash WHERE tile.location_hash = ? "
                            "AND image.width = ? AND image.height = ?",
-                           -1, &fetch_query, nullptr);
+                           -1, &fetch_query, NULL);
 
   if (res != SQLITE_OK) {
     tl_log("%s", sqlite3_errmsg(sqlite_db));
     sqlite3_close_v2(sqlite_db);
-    return nullptr;
+    return NULL;
   }
 
-  sqlite3_stmt* insert_position = nullptr;
+  sqlite3_stmt* insert_position = NULL;
   res = sqlite3_prepare_v2(sqlite_db, "INSERT INTO tile VALUES (?, ?)", -1,
-                           &insert_position, nullptr);
+                           &insert_position, NULL);
 
   if (res != SQLITE_OK) {
     tl_log("%s", sqlite3_errmsg(sqlite_db));
     sqlite3_close_v2(sqlite_db);
-    return nullptr;
+    return NULL;
   }
 
-  sqlite3_stmt* insert_image = nullptr;
-  res = sqlite3_prepare_v2(sqlite_db, "INSERT OR IGNORE INTO image VALUES (?, ?, ?, ?)",
-                           -1, &insert_image, nullptr);
+  sqlite3_stmt* insert_image = NULL;
+  res = sqlite3_prepare_v2(sqlite_db,
+                           "INSERT OR IGNORE INTO image VALUES (?, ?, ?, ?)",
+                           -1, &insert_image, NULL);
 
   image_db* db = (image_db*)calloc(1, sizeof(image_db));
   db->db = sqlite_db;

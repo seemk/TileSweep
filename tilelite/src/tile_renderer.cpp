@@ -8,8 +8,8 @@
 #include <mapnik/well_known_srs.hpp>
 #include "image.h"
 #include "tl_log.h"
+#include "tile.h"
 #include "tl_math.h"
-#include "tl_request.h"
 
 bool register_plugins(const char* plugins_path) {
   mapnik::datasource_cache::instance().register_datasources(plugins_path);
@@ -39,7 +39,7 @@ bool tile_renderer_init(tile_renderer* renderer, const char* mapnik_xml_path,
   return true;
 }
 
-bool render_tile(tile_renderer* renderer, const tl_tile* tile, image* image) {
+bool render_tile(tile_renderer* renderer, const tile* tile, image* image) {
   vec3d p1_xyz{double(tile->x), double(tile->y), double(tile->z)};
   vec3d p2_xyz{double(tile->x + 1), double(tile->y + 1), double(tile->z)};
   vec2d p1 = xyz_to_latlon(p1_xyz);

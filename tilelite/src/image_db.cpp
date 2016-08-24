@@ -69,7 +69,7 @@ image_db* image_db_open(const char* db_file) {
   }
 
   sqlite3_stmt* insert_image = nullptr;
-  res = sqlite3_prepare_v2(sqlite_db, "INSERT INTO image VALUES (?, ?, ?, ?)",
+  res = sqlite3_prepare_v2(sqlite_db, "INSERT OR IGNORE INTO image VALUES (?, ?, ?, ?)",
                            -1, &insert_image, nullptr);
 
   image_db* db = (image_db*)calloc(1, sizeof(image_db));

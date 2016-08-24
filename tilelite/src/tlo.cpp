@@ -49,7 +49,6 @@ static void on_accept(h2o_socket_t* listener, const char* err) {
 }
 
 void tilelite_init(tilelite* tl, const tilelite_config* opt) {
-  printf("tilelite init %p\n", tl);
   if (opt->at("rendering") == "1") {
     tile_renderer_init(&tl->renderer, opt->at("mapnik_xml").c_str(),
                        opt->at("plugins").c_str(), opt->at("fonts").c_str());
@@ -138,8 +137,9 @@ static int ServeTile(h2o_handler_t*, h2o_req_t* req) {
   if (!existing) {
     if (render_tile(&tl->renderer, &t, &img)) {
       uint64_t image_hash = XXH64(img.data, img.len, 0);
-      image_db_add_image(tl->db, &img, image_hash);
-      image_db_add_position(tl->db, pos_hash, image_hash);
+      if (image_db_add_image(tl->db, &img, image_hash)) {
+        image_db_add_position(tl->db, pos_hash, image_hash);
+      }
     }
   }
 
@@ -159,24 +159,30 @@ static int ServeTile(h2o_handler_t*, h2o_req_t* req) {
 
   int64_t req_time = tl_usec_now() - req_start;
   if (req_time > 1000) {
-    tl_log("[%lu] [%d, %d, %d, %d, %d] (%d bytes) | %.2f ms", tl->index, t.w,
-           t.h, t.z, t.x, t.y, img.len, double(req_time) / 1000.0);
+    tl_log("[%lu] [%d, %d, %d, %d, %d] (%d bytes) | %.2f ms [e: %d]", tl->index,
+           t.w, t.h, t.z, t.x, t.y, img.len, double(req_time) / 1000.0,
+           existing);
   } else {
-    tl_log("[%lu] [%d, %d, %d, %d, %d] (%d bytes) | %ld us", tl->index, t.w,
-           t.h, t.z, t.x, t.y, img.len, req_time);
+    tl_log("[%lu] [%d, %d, %d, %d, %d] (%d bytes) | %ld us [e: %d]", tl->index,
+           t.w, t.h, t.z, t.x, t.y, img.len, req_time, existing);
   }
 
   return 0;
 }
 
 void* run_loop(void* arg) {
-  size_t idx = size_t(arg);
+  long idx = long(arg);
+
+  cpu_set_t c;
+  CPU_ZERO(&c);
+  CPU_SET(idx, &c);
+  pthread_setaffinity_np(pthread_self(), sizeof(c), &c);
+
   tilelite* tl = &conf.threads[idx];
   tl->index = idx;
   tilelite_init(tl, conf.opt);
 
-  printf("TL idx: %lu %p\n", tl->index, tl);
-
+  tl_log("[%ld] ready", idx);
   while (h2o_evloop_run(tl->ctx.super.loop) == 0) {
   }
 
@@ -186,7 +192,10 @@ void* run_loop(void* arg) {
 int main(int argc, char** argv) {
   tilelite_config opt = parse_args(argc, argv);
   conf.opt = &opt;
-  conf.num_threads = 4;
+
+  long t = sysconf(_SC_NPROCESSORS_ONLN);
+  conf.num_threads = t;
+
   conf.threads = (tilelite*)calloc(conf.num_threads, sizeof(tilelite));
   h2o_config_init(&conf.globalconf);
 
@@ -209,7 +218,7 @@ int main(int argc, char** argv) {
     tl->fd = sock_fd;
   }
 
-  for (size_t i = 1; i < conf.num_threads; i++) {
+  for (long i = 1; i < conf.num_threads; i++) {
     pthread_t tid;
     h2o_multithread_create_thread(&tid, NULL, &run_loop, (void*)i);
   }

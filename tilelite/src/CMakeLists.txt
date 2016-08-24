@@ -66,10 +66,10 @@ add_executable(tlo
 
 target_link_libraries(
   tlo
-  libh2o-evloop
   sqlite
   mapnik
   icuuc
+  libh2o-evloop
   ${CMAKE_THREAD_LIBS_INIT}
   ${CMAKE_DL_LIBS}
 )

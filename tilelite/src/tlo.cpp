@@ -1,4 +1,5 @@
 #include <ctype.h>
+#include <fcntl.h>
 #include <h2o.h>
 #include "hash/xxhash.h"
 #include "image.h"
@@ -6,28 +7,63 @@
 #include "tcp.h"
 #include "tile_renderer.h"
 #include "tilelite_config.h"
+#include "tl_log.h"
 #include "tl_request.h"
 #include "tl_time.h"
-#include "tl_log.h"
 
-struct tilelite {
-  h2o_accept_ctx_t accept_ctx;
-  image_db* db;
-  tile_renderer renderer;
-};
-
-struct tilelite_handler {
-  h2o_handler_t super;
+struct tl_h2o_ctx {
+  h2o_context_t super;
   void* user;
 };
 
-void tilelite_init(tilelite* tl, const tilelite_config* conf) {
-  tl->db = image_db_open(conf->at("tile_db").c_str());
+struct tilelite {
+  h2o_accept_ctx_t accept_ctx;
+  h2o_socket_t* socket;
+  image_db* db;
+  tile_renderer renderer;
+  tl_h2o_ctx ctx;
+  int fd;
+  size_t index;
+};
 
-  if (conf->at("rendering") == "1") {
-    tile_renderer_init(&tl->renderer, conf->at("mapnik_xml").c_str(),
-                       conf->at("plugins").c_str(), conf->at("fonts").c_str());
+static struct {
+  h2o_globalconf_t globalconf;
+  tilelite_config* opt;
+  size_t num_threads;
+  tilelite* threads;
+} conf = {0};
+
+static void on_accept(h2o_socket_t* listener, const char* err) {
+  if (err != NULL) {
+    printf("Accept error: %s\n", err);
+    return;
   }
+
+  h2o_socket_t* socket = h2o_evloop_socket_accept(listener);
+  if (socket == NULL) {
+    return;
+  }
+
+  tilelite* tl = (tilelite*)listener->data;
+  h2o_accept(&tl->accept_ctx, socket);
+}
+
+void tilelite_init(tilelite* tl, const tilelite_config* opt) {
+  printf("tilelite init %p\n", tl);
+  if (opt->at("rendering") == "1") {
+    tile_renderer_init(&tl->renderer, opt->at("mapnik_xml").c_str(),
+                       opt->at("plugins").c_str(), opt->at("fonts").c_str());
+  }
+
+  h2o_context_init(&tl->ctx.super, h2o_evloop_create(), &conf.globalconf);
+  tl->ctx.user = tl;
+  tl->accept_ctx.ctx = &tl->ctx.super;
+  tl->accept_ctx.hosts = conf.globalconf.hosts;
+
+  tl->socket = h2o_evloop_socket_create(tl->ctx.super.loop, tl->fd,
+                                        H2O_SOCKET_FLAG_DONT_READ);
+  tl->socket->data = tl;
+  h2o_socket_read_start(tl->socket, on_accept);
 }
 
 static int strntoi(const char* s, size_t len) {
@@ -77,20 +113,19 @@ static tl_tile parse_tile(const char* s, size_t len) {
 }
 
 static h2o_pathconf_t* RegisterHandler(h2o_hostconf_t* conf, const char* path,
-                                       int (*onReq)(h2o_handler_t*, h2o_req_t*),
-                                       void* user) {
+                                       int (*onReq)(h2o_handler_t*,
+                                                    h2o_req_t*)) {
   h2o_pathconf_t* pathConf = h2o_config_register_path(conf, path, 0);
-  tilelite_handler* handler =
-      (tilelite_handler*)h2o_create_handler(pathConf, sizeof(*handler));
-  handler->super.on_req = onReq;
-  handler->user = user;
+  h2o_handler_t* handler = h2o_create_handler(pathConf, sizeof(*handler));
+  handler->on_req = onReq;
 
   return pathConf;
 }
 
-static int ServeTile(h2o_handler_t* self, h2o_req_t* req) {
+static int ServeTile(h2o_handler_t*, h2o_req_t* req) {
+  tl_h2o_ctx* x = (tl_h2o_ctx*)req->conn->ctx;
+  tilelite* tl = (tilelite*)x->user;
   int64_t req_start = tl_usec_now();
-  tilelite_handler* handler = (tilelite_handler*)self;
   h2o_generator_t gen = {NULL, NULL};
   req->res.status = 200;
   req->res.reason = "OK";
@@ -99,7 +134,6 @@ static int ServeTile(h2o_handler_t* self, h2o_req_t* req) {
   uint64_t pos_hash = t.hash();
   image img;
 
-  tilelite* tl = (tilelite*)handler->user;
   bool existing = image_db_fetch(tl->db, pos_hash, t.w, t.h, &img);
   if (!existing) {
     if (render_tile(&tl->renderer, &t, &img)) {
@@ -125,62 +159,62 @@ static int ServeTile(h2o_handler_t* self, h2o_req_t* req) {
 
   int64_t req_time = tl_usec_now() - req_start;
   if (req_time > 1000) {
-    tl_log("[%d, %d, %d, %d, %d] (%d bytes) | %.2f ms", t.w, t.h, t.z, t.x, t.y,
-           img.len, double(req_time) / 1000.0);
+    tl_log("[%lu] [%d, %d, %d, %d, %d] (%d bytes) | %.2f ms", tl->index, t.w,
+           t.h, t.z, t.x, t.y, img.len, double(req_time) / 1000.0);
   } else {
-    tl_log("[%d, %d, %d, %d, %d] (%d bytes) | %lld us", t.w, t.h, t.z, t.x, t.y,
-           img.len, req_time);
+    tl_log("[%lu] [%d, %d, %d, %d, %d] (%d bytes) | %ld us", tl->index, t.w,
+           t.h, t.z, t.x, t.y, img.len, req_time);
   }
 
   return 0;
 }
 
-static void on_accept(h2o_socket_t* listener, const char* err) {
-  if (err != NULL) {
-    printf("Accept error: %s\n", err);
-    return;
+void* run_loop(void* arg) {
+  size_t idx = size_t(arg);
+  tilelite* tl = &conf.threads[idx];
+  tl->index = idx;
+  tilelite_init(tl, conf.opt);
+
+  printf("TL idx: %lu %p\n", tl->index, tl);
+
+  while (h2o_evloop_run(tl->ctx.super.loop) == 0) {
   }
 
-  h2o_socket_t* socket = h2o_evloop_socket_accept(listener);
-  if (socket == NULL) {
-    return;
-  }
-
-  tilelite* tl = (tilelite*)listener->data;
-  h2o_accept(&tl->accept_ctx, socket);
+  return NULL;
 }
 
 int main(int argc, char** argv) {
-  tilelite_config tl_config = parse_args(argc, argv);
-
-  h2o_globalconf_t config;
-  h2o_config_init(&config);
-
-  tilelite tl = {0};
-  tilelite_init(&tl, &tl_config);
+  tilelite_config opt = parse_args(argc, argv);
+  conf.opt = &opt;
+  conf.num_threads = 4;
+  conf.threads = (tilelite*)calloc(conf.num_threads, sizeof(tilelite));
+  h2o_config_init(&conf.globalconf);
 
   h2o_hostconf_t* hostconf = h2o_config_register_host(
-      &config, h2o_iovec_init(H2O_STRLIT("default")), 65535);
-  RegisterHandler(hostconf, "/", ServeTile, &tl);
+      &conf.globalconf, h2o_iovec_init(H2O_STRLIT("default")), 65535);
+  RegisterHandler(hostconf, "/", ServeTile);
 
-  h2o_context_t ctx;
-  h2o_context_init(&ctx, h2o_evloop_create(), &config);
-
-  tl.accept_ctx.ctx = &ctx;
-  tl.accept_ctx.hosts = config.hosts;
+  for (size_t i = 0; i < conf.num_threads; i++) {
+    tilelite* tl = &conf.threads[i];
+    tl->db = image_db_open(opt.at("tile_db").c_str());
+  }
 
   int sock_fd = bind_tcp("127.0.0.1", "9567");
   if (sock_fd == -1) {
     return 1;
   }
 
-  h2o_socket_t* socket =
-      h2o_evloop_socket_create(ctx.loop, sock_fd, H2O_SOCKET_FLAG_DONT_READ);
-  socket->data = &tl;
-  h2o_socket_read_start(socket, on_accept);
-
-  while (h2o_evloop_run(ctx.loop) == 0) {
+  for (size_t i = 0; i < conf.num_threads; i++) {
+    tilelite* tl = &conf.threads[i];
+    tl->fd = sock_fd;
   }
+
+  for (size_t i = 1; i < conf.num_threads; i++) {
+    pthread_t tid;
+    h2o_multithread_create_thread(&tid, NULL, &run_loop, (void*)i);
+  }
+
+  run_loop((void*)0);
 
   return 0;
 }

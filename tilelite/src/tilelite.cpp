@@ -1,190 +1,229 @@
-#include "tilelite.h"
+#include <ctype.h>
+#include <fcntl.h>
+#include <h2o.h>
+#include "hash/xxhash.h"
+#include "image.h"
 #include "image_db.h"
+#include "tcp.h"
 #include "tile_renderer.h"
-#include "hash/MurmurHash2.h"
-#include "tl_time.h"
-#include "tl_math.h"
-#include "prerender.h"
-#include "send.h"
+#include "tilelite_config.h"
 #include "tl_log.h"
+#include "tl_request.h"
+#include "tl_time.h"
 
-const uint64_t HASH_SEED = 0x1F0D3804;
+struct tl_h2o_ctx {
+  h2o_context_t super;
+  void* user;
+};
 
-void process_simple_render(tilelite* context, image_db* db, tile_renderer* renderer, tl_tile t) {
-  uint64_t pos_hash = t.hash();
+struct tilelite {
+  h2o_accept_ctx_t accept_ctx;
+  h2o_socket_t* socket;
+  image_db* db;
+  tile_renderer renderer;
+  tl_h2o_ctx ctx;
+  int fd;
+  size_t index;
+};
 
-  // TODO: Check existence without reading and overwrite
-  image img;
-  bool existing = image_db_fetch(db, pos_hash, t.w, t.h, &img);
+static struct {
+  h2o_globalconf_t globalconf;
+  tilelite_config* opt;
+  size_t num_threads;
+  tilelite* threads;
+} conf = {0};
 
-  if (existing) {
-    free(img.data);
+static void on_accept(h2o_socket_t* listener, const char* err) {
+  if (err != NULL) {
+    printf("Accept error: %s\n", err);
     return;
   }
 
-  if (render_tile(renderer, &t, &img)) {
-    uint64_t image_hash = MurmurHash2(img.data, img.len, HASH_SEED);
-    context->queue_image_write({img, pos_hash, image_hash});
+  h2o_socket_t* socket = h2o_evloop_socket_accept(listener);
+  if (socket == NULL) {
+    return;
   }
+
+  tilelite* tl = (tilelite*)listener->data;
+  h2o_accept(&tl->accept_ctx, socket);
 }
 
-void process_prerender(tilelite* context, tl_prerender prerender) {
-  const int num_points = prerender.num_points;
-  std::vector<vec2d> coordinates;
-  coordinates.reserve(num_points);
-
-  for (int i = 0; i < num_points; i++) {
-    coordinates.push_back(prerender.points[i]);
+void tilelite_init(tilelite* tl, const tilelite_config* opt) {
+  if (opt->at("rendering") == "1") {
+    tile_renderer_init(&tl->renderer, opt->at("mapnik_xml").c_str(),
+                       opt->at("plugins").c_str(), opt->at("fonts").c_str());
   }
 
-  uint64_t total_indices = 0;
-  for (int i = 0; i < prerender.num_zoom_levels; i++) {
-    std::vector<vec2i> xyz_coordinates(num_points);
-    int z = prerender.zoom[i];
-    latlon_to_xyz(coordinates.data(), num_points, z, xyz_coordinates.data());
-    std::vector<vec2i> prerender_indices = make_prerender_indices(xyz_coordinates.data(), num_points);
+  h2o_context_init(&tl->ctx.super, h2o_evloop_create(), &conf.globalconf);
+  tl->ctx.user = tl;
+  tl->accept_ctx.ctx = &tl->ctx.super;
+  tl->accept_ctx.hosts = conf.globalconf.hosts;
 
-    total_indices += prerender_indices.size();
+  tl->socket = h2o_evloop_socket_create(tl->ctx.super.loop, tl->fd,
+                                        H2O_SOCKET_FLAG_DONT_READ);
+  tl->socket->data = tl;
+  h2o_socket_read_start(tl->socket, on_accept);
+}
 
-    for (auto p : prerender_indices) {
-      tl_request req;
-      req.request_time = tl_usec_now();
-      req.client_fd = -1;
-      req.type = rq_prerender_img;
+static int strntoi(const char* s, size_t len) {
+  int n = 0;
 
-      tl_tile* tile = &req.as.tile;
-      tile->x = p.x;
-      tile->y = p.y;
-      tile->z = z;
-      tile->w = prerender.width;
-      tile->h = prerender.height;
-      context->queue_tile_request(req);
+  for (size_t i = 0; i < len; i++) {
+    n = n * 10 + s[i] - '0';
+  }
+
+  return n;
+}
+
+static tl_tile parse_tile(const char* s, size_t len) {
+  size_t begin = 0;
+  size_t end = 0;
+  int part = 0;
+  int parsing_num = 0;
+  int params[5] = {-1};
+
+  for (size_t i = 0; i < len; i++) {
+    if (isdigit(s[i])) {
+      if (!parsing_num) {
+        begin = i;
+        parsing_num = 1;
+      }
+      end = i;
+    } else {
+      if (parsing_num) {
+        params[part++] = int(strntoi(&s[begin], end - begin + 1));
+        parsing_num = 0;
+      }
+    }
+
+    if (i == len - 1 && parsing_num) {
+      params[part] = int(strntoi(&s[begin], end - begin + 1));
     }
   }
 
-  tl_log("prerender queued; total indices: %llu", total_indices);
+  tl_tile t;
+  t.w = params[0];
+  t.h = params[1];
+  t.x = params[2];
+  t.y = params[3];
+  t.z = params[4];
 
-  free(prerender.points);
+  return t;
 }
 
-tilelite::tilelite(const tilelite_config* conf) : running(true) {
-  int num_threads = std::stoi(conf->at("threads"));
-  if (num_threads < 1) num_threads = 1;
+static h2o_pathconf_t* RegisterHandler(h2o_hostconf_t* conf, const char* path,
+                                       int (*onReq)(h2o_handler_t*,
+                                                    h2o_req_t*)) {
+  h2o_pathconf_t* pathConf = h2o_config_register_path(conf, path, 0);
+  h2o_handler_t* handler = h2o_create_handler(pathConf, sizeof(*handler));
+  handler->on_req = onReq;
 
-  rendering_enabled = conf->at("rendering") == "1";
-
-  std::string db_name = conf->at("tile_db");
-  for (int i = 0; i < num_threads + 1; i++) {
-    image_db* db = image_db_open(db_name.c_str());
-    databases.push_back(db);
-  }
-
-  for (int i = 0; i < num_threads; i++) {
-    image_db* db = databases[i];
-    threads.emplace_back([=] { this->thread_job(db, conf); });
-  }
-
-  image_db* write_db = databases[num_threads];
-  image_write_thread =
-      std::thread([=] { this->image_write_job(write_db, conf); });
+  return pathConf;
 }
 
-void tilelite::queue_tile_request(tl_request req) {
-  pending_requests.enqueue(req);
-  pending_requests_sema.signal(1);
-}
+static int ServeTile(h2o_handler_t*, h2o_req_t* req) {
+  tl_h2o_ctx* x = (tl_h2o_ctx*)req->conn->ctx;
+  tilelite* tl = (tilelite*)x->user;
+  int64_t req_start = tl_usec_now();
+  h2o_generator_t gen = {NULL, NULL};
+  req->res.status = 200;
+  req->res.reason = "OK";
+  tl_tile t = parse_tile(req->path.base, req->path.len);
 
-void tilelite::queue_image_write(image_write_task task) {
-  pending_img_writes.enqueue(task);
-  pending_img_writes_sema.signal(1);
-}
+  uint64_t pos_hash = t.hash();
+  image img;
 
-tilelite::~tilelite() {
-  running = false;
-
-  pending_requests_sema.signal(threads.size());
-  for (std::thread& t : threads) {
-    t.join();
-  }
-
-  pending_img_writes_sema.signal(1);
-  image_write_thread.join();
-
-  for (image_db* db : databases) {
-    image_db_close(db);
-  }
-}
-
-void tilelite::thread_job(image_db* db, const tilelite_config* conf) {
-  std::string mapnik_xml_path = conf->at("mapnik_xml");
-
-  tile_renderer renderer;
-  if (conf->at("rendering") == "1") {
-    if (!tile_renderer_init(&renderer, mapnik_xml_path.c_str())) {
-      tl_log("failed to initialize renderer");
-      return;
-    }
-  }
-
-  while (running) {
-    pending_requests_sema.wait();
-
-    tl_request req;
-    while (pending_requests.try_dequeue(req)) {
-      switch (req.type) {
-        case rq_tile:
-          {
-            tl_tile t = req.as.tile;
-            uint64_t pos_hash = t.hash();
-            image img;
-            bool existing = image_db_fetch(db, pos_hash, t.w, t.h, &img);
-            if (existing) {
-              send_image(req.client_fd, &img);
-              int64_t processing_time_us = tl_usec_now() - req.request_time;
-              if (processing_time_us > 1000) {
-                tl_log("[%d, %d, %d, %d, %d] (%d bytes) | %.2f ms", t.w, t.h, t.z,
-                       t.x, t.y, img.len, double(processing_time_us) / 1000.0);
-              } else {
-                tl_log("[%d, %d, %d, %d, %d] (%d bytes) | %lld us", t.w, t.h, t.z, t.x,
-                       t.y, img.len, processing_time_us);
-              }
-              free(img.data);
-            } else {
-              if (rendering_enabled && render_tile(&renderer, &t, &img)) {
-                send_image(req.client_fd, &img);
-                uint64_t image_hash = MurmurHash2(img.data, img.len, HASH_SEED);
-                queue_image_write({img, pos_hash, image_hash});
-              } else {
-                send_status(req.client_fd, tl_no_tile);
-              }
-            }
-          }
-          break;
-        case rq_prerender:
-          process_prerender(this, req.as.prerender); 
-          send_status(req.client_fd, tl_ok);
-          break;
-        case rq_prerender_img:
-          process_simple_render(this, db, &renderer, req.as.tile);
-          break;
-        default:
-          break;
+  bool existing = image_db_fetch(tl->db, pos_hash, t.w, t.h, &img);
+  if (!existing) {
+    if (render_tile(&tl->renderer, &t, &img)) {
+      uint64_t image_hash = XXH64(img.data, img.len, 0);
+      if (image_db_add_image(tl->db, &img, image_hash)) {
+        image_db_add_position(tl->db, pos_hash, image_hash);
       }
     }
   }
 
-  tile_renderer_destroy(&renderer);
+  h2o_start_response(req, &gen);
+  if (img.len > 0) {
+    h2o_add_header(&req->pool, &req->res.headers, H2O_TOKEN_CONTENT_TYPE,
+                   H2O_STRLIT("image/png"));
+    h2o_iovec_t body;
+    body.base = (char*)img.data;
+    body.len = img.len;
+    h2o_send(req, &body, 1, 1);
+
+    free(img.data);
+  } else {
+    h2o_send(req, &req->entity, 1, 1);
+  }
+
+  int64_t req_time = tl_usec_now() - req_start;
+  if (req_time > 1000) {
+    tl_log("[%lu] [%d, %d, %d, %d, %d] (%d bytes) | %.2f ms [e: %d]", tl->index,
+           t.w, t.h, t.z, t.x, t.y, img.len, double(req_time) / 1000.0,
+           existing);
+  } else {
+    tl_log("[%lu] [%d, %d, %d, %d, %d] (%d bytes) | %ld us [e: %d]", tl->index,
+           t.w, t.h, t.z, t.x, t.y, img.len, req_time, existing);
+  }
+
+  return 0;
 }
 
-void tilelite::image_write_job(image_db* db, const tilelite_config* conf) {
-  while (running) {
-    pending_img_writes_sema.wait();
+void* run_loop(void* arg) {
+  long idx = long(arg);
 
-    image_write_task task;
-    while (pending_img_writes.try_dequeue(task)) {
-      image_db_add_image(db, &task.img, task.image_hash);
-      image_db_add_position(db, task.position_hash, task.image_hash);
-      free(task.img.data);
-    }
+  cpu_set_t c;
+  CPU_ZERO(&c);
+  CPU_SET(idx, &c);
+  pthread_setaffinity_np(pthread_self(), sizeof(c), &c);
+
+  tilelite* tl = &conf.threads[idx];
+  tl->index = idx;
+  tilelite_init(tl, conf.opt);
+
+  tl_log("[%ld] ready", idx);
+  while (h2o_evloop_run(tl->ctx.super.loop) == 0) {
   }
+
+  return NULL;
+}
+
+int main(int argc, char** argv) {
+  tilelite_config opt = parse_args(argc, argv);
+  conf.opt = &opt;
+
+  long t = sysconf(_SC_NPROCESSORS_ONLN);
+  conf.num_threads = t;
+
+  conf.threads = (tilelite*)calloc(conf.num_threads, sizeof(tilelite));
+  h2o_config_init(&conf.globalconf);
+
+  h2o_hostconf_t* hostconf = h2o_config_register_host(
+      &conf.globalconf, h2o_iovec_init(H2O_STRLIT("default")), 65535);
+  RegisterHandler(hostconf, "/", ServeTile);
+
+  for (size_t i = 0; i < conf.num_threads; i++) {
+    tilelite* tl = &conf.threads[i];
+    tl->db = image_db_open(opt.at("tile_db").c_str());
+  }
+
+  int sock_fd = bind_tcp("127.0.0.1", "9567");
+  if (sock_fd == -1) {
+    return 1;
+  }
+
+  for (size_t i = 0; i < conf.num_threads; i++) {
+    tilelite* tl = &conf.threads[i];
+    tl->fd = sock_fd;
+  }
+
+  for (long i = 1; i < conf.num_threads; i++) {
+    pthread_t tid;
+    h2o_multithread_create_thread(&tid, NULL, &run_loop, (void*)i);
+  }
+
+  run_loop((void*)0);
+
+  return 0;
 }

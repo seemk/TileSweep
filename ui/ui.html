@@ -1,0 +1,227 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>TileLite control panel</title>
+  <link rel="stylesheet" href="http://openlayers.org/en/v3.17.1/css/ol.css" type="text/css">
+  <script src="http://openlayers.org/en/v3.17.1/build/ol.js"></script>
+</head>
+
+<body>
+  <div style="display: flex; padding: 10px">
+    <div>
+      <div style="display: flex">
+        <div>Zoom levels</div>
+        <input type="number" value="0" min="0" max="18" id="minZoom" />
+        <input type="number" value="16" min="0" max="18" id="maxZoom" />
+      </div>
+      <div style="display: flex">
+        <div>Tile sizes</div>
+        <div>
+          <input type="checkbox" checked id="normSize" />
+          256
+        </div>
+        <div>
+          <input type="checkbox" id="retinaSize" />
+          512
+        </div>
+      </div>
+      <input type="button" value="Start" id="submit" />
+    </div>
+    <div>
+      <div id="errorText"></div>
+      <div id="selectionText"></div>
+      <div id="statusText"></div>
+    </div>
+  </div>
+  <div id="map" class="map"></div>
+</body>
+
+<script type="text/javascript">
+function byId(id) { return document.getElementById(id); }
+
+var state = {};
+
+var raster = new ol.layer.Tile({
+  source: new ol.source.OSM()
+});
+
+var source = new ol.source.Vector();
+
+var vector = new ol.layer.Vector({
+  source: source,
+  style: new ol.style.Style({
+    fill: new ol.style.Fill({
+    color: 'rgba(204,204,204,0.3)'
+    }),
+    stroke: new ol.style.Stroke({
+      color: '#525252',
+      width: 2
+    })
+  })
+});
+
+var map = new ol.Map({
+  layers: [raster, vector],
+  target: 'map',
+  view: new ol.View({
+    center: ol.proj.fromLonLat([24.747583, 59.461970]),
+    zoom: 7
+  })
+});
+
+var type = 'Polygon';
+var draw = new ol.interaction.Draw({
+  source: source,
+  type: type,
+  style: new ol.style.Style({
+    fill: new ol.style.Fill({
+      color: 'rgba(204,204,204,0.2)'
+    }),
+    stroke: new ol.style.Stroke({
+      color: '#525252',
+      lineDash: [10, 10],
+      width: 2
+    })
+  })
+});
+map.addInteraction(draw);
+
+draw.on('drawend', function(evt) {
+  var coords = evt.feature.getGeometry().getCoordinates()[0].map(function(c) {
+    return ol.proj.toLonLat(c);
+  }).slice(0, -1);
+  source.clear();
+  state["coordinates"] = coords;
+  console.log(coords);
+
+  console.log(state);
+});
+
+var HitTest = function(points) {
+  var len = points.length;
+
+  this.points = points;
+  this.constants = Array(len);
+  this.multiples = Array(len);
+
+  var j = len - 1;
+  for (var i = 0; i < len; i++) {
+    var pt_i = points[i];
+    var pt_j = points[j];
+    if (pt_i[1] == pt_j[1]) {
+      this.constants[i] = pt_i[0];
+      this.multiples[i] = 0.0;
+    } else {
+      this.constants[i] = pt_i[0] - (pt_i[1] * pt_j[0]) / (pt_j[1] - pt_i[1]) + (pt_i[1] * pt_i[0]) / (pt_j[1] - pt_i[1]);
+      this.multiples[i] = (pt_j[0] - pt_i[0]) / (pt_j[1] - pt_i[1]);
+    }
+
+    j = i;
+  }
+};
+
+HitTest.prototype.check = function(pt) {
+  var len = this.points.length;
+  var j = len - 1;
+
+  var inside = 0;
+
+  for (var i = 0; i < len; i++) {
+    var pt_i = this.points[i];
+    var pt_j = this.points[j];
+
+    if ((pt_i[1] < pt[1] && pt_j[1] >= pt[1]) ||
+        (pt_j[1] < pt[1] && pt_i[1] >= pt[1])) {
+      inside ^= (pt[1] * this.multiples[i] + this.constants[i] < pt[0]); 
+    }
+
+    j = i;
+  }
+
+  return inside > 0;
+};
+
+function lonlatToXYZ(lon, lat, z) {
+  var latRad = lat * Math.PI / 180.0;
+  var n = Math.pow(2.0, z);
+
+  var x = ((lon + 180.0) / 360.0 * n) | 0;
+  var y = ((1.0 - Math.log(Math.tan(latRad) + (1.0 / Math.cos(latRad))) / Math.PI) / 2.0 * n) | 0;
+
+  return [x, y, z];
+}
+
+function calcIntersections(coords) {
+  if (coords.length < 3) return [];
+
+  var tlx = Infinity;
+  var tly = Infinity;
+  var brx = -Infinity;
+  var bry = -Infinity;
+
+  for (var i = 0; i < coords.length; i++) {
+    var pt = coords[i];
+    if (pt[0] < tlx) tlx = pt[0];
+    if (pt[1] < tly) tly = pt[1];
+    if (pt[0] > brx) brx = pt[0];
+    if (pt[1] > bry) bry = pt[1];
+  }
+
+  var hitTest = new HitTest(coords);
+
+  var intersections = coords.slice();
+  for (var y = tly; y <= bry; y++) {
+    for (var x = tlx; x <= brx; x++) {
+      var inside = hitTest.check([x, y])
+        || hitTest.check([x + 1, y])
+        || hitTest.check([x, y + 1])
+        || hitTest.check([x + 1, y + 1]);
+      if (inside) intersections.push([x, y]);
+    }
+  }
+
+  return intersections;
+}
+
+function makePrerenderIndices(coordinates, minZoom, maxZoom, dim) {
+  var indices = [];
+  for (var z = minZoom; z < maxZoom; z++) {
+    var xyzCoords = coordinates.map(function(c) { return lonlatToXYZ(c[0], c[1], z); });
+    indices = indices.concat(calcIntersections(xyzCoords));
+  }
+
+  return indices;
+}
+
+document.getElementById("submit").addEventListener("click", function() {
+  var minZoom = byId("minZoom").value;
+  var maxZoom = byId("maxZoom").value;
+  var normSize = byId("normSize").checked;
+  var retinaSize = byId("retinaSize").checked;
+  if (!normSize && !retinaSize) {
+    byId("errorText").innerHTML = "At least one tile size required.";
+    return;
+  }
+
+  if (!state["coordinates"]) {
+    byId("errorText").innerHTML = "No area selected.";
+    return;
+  }
+
+  var coordinates = state["coordinates"];
+  if (normSize) {
+    var indicesNorm = makePrerenderIndices(coordinates, minZoom, maxZoom, 256);
+    console.log("256x256 tiles: " + indicesNorm.length);
+  }
+
+  if (retinaSize) {
+    var indicesRetina = makePrerenderIndices(coordinates, minZoom, maxZoom, 512);
+    console.log("512x512 tiles: " + indicesRetina.length);
+  }
+
+});
+
+</script>
+
+</html>

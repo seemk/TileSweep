@@ -1,4 +1,4 @@
-#include "tile.h"
+#include "tl_tile.h"
 #include <ctype.h>
 
 static int strntoi(const char* s, size_t len) {
@@ -11,7 +11,7 @@ static int strntoi(const char* s, size_t len) {
   return n;
 }
 
-tile parse_tile(const char* s, size_t len) {
+tl_tile parse_tile(const char* s, size_t len) {
   size_t begin = 0;
   size_t end = 0;
   int part = 0;
@@ -37,12 +37,12 @@ tile parse_tile(const char* s, size_t len) {
     }
   }
 
-  tile t;
-  t.w = params[0];
-  t.h = params[1];
-  t.x = params[2];
-  t.y = params[3];
-  t.z = params[4];
+  tl_tile t;
+  t.x = params[0];
+  t.y = params[1];
+  t.z = params[2];
+  t.w = params[3];
+  t.h = params[4];
 
   return t;
 }

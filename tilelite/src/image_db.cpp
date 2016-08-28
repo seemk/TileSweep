@@ -79,6 +79,8 @@ image_db* image_db_open(const char* db_file) {
   db->insert_position = insert_position;
   db->insert_image = insert_image;
 
+  sqlite3_busy_timeout(sqlite_db, 100);
+
   return db;
 }
 
@@ -99,6 +101,11 @@ bool image_db_fetch(const image_db* db, uint64_t position_hash, int width,
   sqlite3_bind_int(db->fetch_query, 3, height);
 
   int res = sqlite3_step(db->fetch_query);
+
+  if (res == SQLITE_BUSY) {
+    tl_log("image fetch failed: BUSY");
+  }
+
   if (res == SQLITE_ROW) {
     const void* blob = sqlite3_column_blob(db->fetch_query, 0);
     int num_bytes = sqlite3_column_bytes(db->fetch_query, 0);
@@ -124,7 +131,13 @@ bool image_db_add_position(image_db* db, uint64_t position_hash,
   sqlite3_bind_int64(query, 1, position_hash);
   sqlite3_bind_int64(query, 2, image_hash);
 
-  return sqlite3_step(query) == SQLITE_DONE;
+  int res = sqlite3_step(query);
+
+  if (res != SQLITE_DONE) {
+    tl_log("add position failed %d: %s", res, sqlite3_errstr(res));
+  }
+
+  return res == SQLITE_DONE;
 }
 
 bool image_db_add_image(image_db* db, const image* img, uint64_t image_hash) {
@@ -137,5 +150,11 @@ bool image_db_add_image(image_db* db, const image* img, uint64_t image_hash) {
   sqlite3_bind_int(query, 3, img->width);
   sqlite3_bind_int(query, 4, img->height);
 
-  return sqlite3_step(query) == SQLITE_DONE;
+  int res = sqlite3_step(query);
+
+  if (res != SQLITE_DONE) {
+    tl_log("add image failed %d: %s", res, sqlite3_errstr(res));
+  }
+
+  return res == SQLITE_DONE;
 }

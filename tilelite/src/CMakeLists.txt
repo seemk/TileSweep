@@ -18,12 +18,13 @@ add_executable(tilelite
   ini/ini.c
   parg/parg.c
   tcp.cpp
-  tile.cpp
   tile_renderer.cpp
   tilelite.cpp
   tl_math.cpp
   tl_options.cpp
+  tl_tile.cpp
   tl_time.cpp
+  tl_write_queue.cpp
 )
 
 target_link_libraries(

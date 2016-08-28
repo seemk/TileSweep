@@ -1,4 +1,3 @@
-#include "tile.h"
 #include <fcntl.h>
 #include <h2o.h>
 #include "hash/xxhash.h"
@@ -6,9 +5,11 @@
 #include "image_db.h"
 #include "tcp.h"
 #include "tile_renderer.h"
+#include "tl_tile.h"
+#include "tl_time.h"
 #include "tl_log.h"
 #include "tl_options.h"
-#include "tl_time.h"
+#include "tl_write_queue.h"
 
 struct tl_h2o_ctx {
   h2o_context_t super;
@@ -23,6 +24,7 @@ struct tilelite {
   tl_h2o_ctx ctx;
   int fd;
   size_t index;
+  tl_write_queue* write_queue;
 };
 
 static struct {
@@ -75,13 +77,25 @@ static h2o_pathconf_t* register_handler(h2o_hostconf_t* conf, const char* path,
 }
 
 static int serve_tile(h2o_handler_t*, h2o_req_t* req) {
-  tl_h2o_ctx* x = (tl_h2o_ctx*)req->conn->ctx;
-  tilelite* tl = (tilelite*)x->user;
+  tl_h2o_ctx* h2o = (tl_h2o_ctx*)req->conn->ctx; 
+  tilelite* tl = (tilelite*)h2o->user;
   int64_t req_start = tl_usec_now();
   h2o_generator_t gen = {NULL, NULL};
+  tl_tile t = parse_tile(req->path.base, req->path.len);
+
+  h2o_start_response(req, &gen);
+  h2o_add_header(&req->pool, &req->res.headers,
+                 H2O_TOKEN_ACCESS_CONTROL_ALLOW_ORIGIN, H2O_STRLIT("*"));
+
+  if (!t.valid()) {
+    req->res.status = 400;
+    req->res.reason = "Bad Request";
+    h2o_send(req, &req->entity, 1, 1);
+    return 0;
+  }
+
   req->res.status = 200;
   req->res.reason = "OK";
-  tile t = parse_tile(req->path.base, req->path.len);
 
   uint64_t pos_hash = t.hash();
   image img;
@@ -90,13 +104,10 @@ static int serve_tile(h2o_handler_t*, h2o_req_t* req) {
   if (!existing) {
     if (render_tile(&tl->renderer, &t, &img)) {
       uint64_t image_hash = XXH64(img.data, img.len, 0);
-      if (image_db_add_image(tl->db, &img, image_hash)) {
-        image_db_add_position(tl->db, pos_hash, image_hash);
-      }
+      tl_write_queue_push(tl->write_queue, t, img, image_hash);
     }
   }
 
-  h2o_start_response(req, &gen);
   if (img.len > 0) {
     h2o_add_header(&req->pool, &req->res.headers, H2O_TOKEN_CONTENT_TYPE,
                    H2O_STRLIT("image/png"));
@@ -155,12 +166,15 @@ int main(int argc, char** argv) {
       &conf.globalconf, h2o_iovec_init(H2O_STRLIT("default")), 65535);
   register_handler(hostconf, "/", serve_tile);
 
+  tl_write_queue write_queue; 
+  tl_write_queue_init(&write_queue, image_db_open(opt.at("tile_db").c_str()));
   for (size_t i = 0; i < conf.num_threads; i++) {
     tilelite* tl = &conf.threads[i];
     tl->db = image_db_open(opt.at("tile_db").c_str());
+    tl->write_queue = &write_queue;
   }
 
-  int sock_fd = bind_tcp("127.0.0.1", "9567");
+  int sock_fd = bind_tcp(opt["host"].c_str(), opt["port"].c_str());
   if (sock_fd == -1) {
     return 1;
   }

@@ -17,6 +17,8 @@ static void* commit_pending(void* arg) {
         tl_log("[%d, %d, %d, %d, %d] insert [%.2f ms]", t.w, t.h, t.x, t.y, t.z,
                double(end_time - task.start_time) / 1000.0);
       }
+
+      free(task.img.data);
     }
   }
 }

@@ -26,7 +26,7 @@ int bind_tcp(const char* host, const char* port) {
   int fd = -1;
 
   struct addrinfo* result;
-  for (result = results; result != nullptr; result = result->ai_next) {
+  for (result = results; result != NULL; result = result->ai_next) {
     fd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
     if (fd == -1) {
       continue;
@@ -45,8 +45,7 @@ int bind_tcp(const char* host, const char* port) {
     close(fd);
   }
 
-  if (result == nullptr) {
-    tl_log("failed to bind socket");
+  if (result == NULL) {
     return -1;
   }
 

@@ -19,12 +19,13 @@ struct tl_h2o_ctx {
 struct tilelite {
   h2o_accept_ctx_t accept_ctx;
   h2o_socket_t* socket;
+  tl_h2o_ctx ctx;
   image_db* db;
   tile_renderer renderer;
-  tl_h2o_ctx ctx;
   int fd;
   size_t index;
   tl_write_queue* write_queue;
+  bool render_enabled;
 };
 
 static struct {
@@ -32,7 +33,8 @@ static struct {
   tl_options* opt;
   size_t num_threads;
   tilelite* threads;
-} conf = {0};
+  bool rendering;
+} conf;
 
 static void on_accept(h2o_socket_t* listener, const char* err) {
   if (err != NULL) {
@@ -51,8 +53,11 @@ static void on_accept(h2o_socket_t* listener, const char* err) {
 
 void tilelite_init(tilelite* tl, const tl_options* opt) {
   if (opt->at("rendering") == "1") {
+    tl->render_enabled = true;
     tile_renderer_init(&tl->renderer, opt->at("mapnik_xml").c_str(),
                        opt->at("plugins").c_str(), opt->at("fonts").c_str());
+  } else {
+    tl->render_enabled = false;
   }
 
   h2o_context_init(&tl->ctx.super, h2o_evloop_create(), &conf.globalconf);
@@ -77,9 +82,10 @@ static h2o_pathconf_t* register_handler(h2o_hostconf_t* conf, const char* path,
 }
 
 static int serve_tile(h2o_handler_t*, h2o_req_t* req) {
+  int64_t req_start = tl_usec_now();
+
   tl_h2o_ctx* h2o = (tl_h2o_ctx*)req->conn->ctx; 
   tilelite* tl = (tilelite*)h2o->user;
-  int64_t req_start = tl_usec_now();
   h2o_generator_t gen = {NULL, NULL};
   tl_tile t = parse_tile(req->path.base, req->path.len);
 
@@ -94,30 +100,37 @@ static int serve_tile(h2o_handler_t*, h2o_req_t* req) {
     return 0;
   }
 
-  req->res.status = 200;
-  req->res.reason = "OK";
-
   uint64_t pos_hash = t.hash();
   image img;
 
   bool existing = image_db_fetch(tl->db, pos_hash, t.w, t.h, &img);
-  if (!existing) {
+  if (tl->render_enabled && !existing) {
     if (render_tile(&tl->renderer, &t, &img)) {
       uint64_t image_hash = XXH64(img.data, img.len, 0);
-      tl_write_queue_push(tl->write_queue, t, img, image_hash);
+
+      image write_img;
+      write_img.width = img.width;
+      write_img.height = img.height;
+      write_img.len = img.len;
+      write_img.data = (uint8_t*)calloc(write_img.len, 1);
+      memcpy(write_img.data, img.data, img.len);
+      tl_write_queue_push(tl->write_queue, t, write_img, image_hash);
     }
   }
 
   if (img.len > 0) {
+    req->res.status = 200;
+    req->res.reason = "OK";
     h2o_add_header(&req->pool, &req->res.headers, H2O_TOKEN_CONTENT_TYPE,
                    H2O_STRLIT("image/png"));
     h2o_iovec_t body;
     body.base = (char*)img.data;
     body.len = img.len;
     h2o_send(req, &body, 1, 1);
-
     free(img.data);
   } else {
+    req->res.status = 204;
+    req->res.reason = "No Content";
     h2o_send(req, &req->entity, 1, 1);
   }
 
@@ -156,31 +169,34 @@ void* run_loop(void* arg) {
 int main(int argc, char** argv) {
   tl_options opt = parse_options(argc, argv);
   conf.opt = &opt;
-
   conf.num_threads = sysconf(_SC_NPROCESSORS_ONLN);
-
   conf.threads = (tilelite*)calloc(conf.num_threads, sizeof(tilelite));
+  conf.rendering = opt["rendering"] == "1";
+
   h2o_config_init(&conf.globalconf);
 
   h2o_hostconf_t* hostconf = h2o_config_register_host(
       &conf.globalconf, h2o_iovec_init(H2O_STRLIT("default")), 65535);
   register_handler(hostconf, "/", serve_tile);
 
-  tl_write_queue write_queue; 
-  tl_write_queue_init(&write_queue, image_db_open(opt.at("tile_db").c_str()));
-  for (size_t i = 0; i < conf.num_threads; i++) {
-    tilelite* tl = &conf.threads[i];
-    tl->db = image_db_open(opt.at("tile_db").c_str());
-    tl->write_queue = &write_queue;
+  const char* db_file = opt["tile_db"].c_str();
+
+  tl_write_queue* write_queue = NULL;
+  if (conf.rendering) {
+    write_queue = (tl_write_queue*)calloc(1, sizeof(tl_write_queue)); 
+    tl_write_queue_init(write_queue, image_db_open(db_file));
   }
 
   int sock_fd = bind_tcp(opt["host"].c_str(), opt["port"].c_str());
   if (sock_fd == -1) {
+    tl_log("failed to bind socket");
     return 1;
   }
 
   for (size_t i = 0; i < conf.num_threads; i++) {
     tilelite* tl = &conf.threads[i];
+    tl->db = image_db_open(db_file);
+    tl->write_queue = write_queue;
     tl->fd = sock_fd;
   }
 
@@ -189,7 +205,7 @@ int main(int argc, char** argv) {
     h2o_multithread_create_thread(&tid, NULL, &run_loop, (void*)i);
   }
 
-  run_loop((void*)0);
+  run_loop(NULL);
 
   return 0;
 }

@@ -8,8 +8,6 @@ include_directories("/usr/local/include/mapnik")
 
 add_executable(tests
   test/tests.cpp
-
-  hit_test.cpp
 )
 
 add_executable(tilelite

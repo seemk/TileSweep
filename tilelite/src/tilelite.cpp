@@ -5,10 +5,10 @@
 #include "image_db.h"
 #include "tcp.h"
 #include "tile_renderer.h"
-#include "tl_tile.h"
-#include "tl_time.h"
 #include "tl_log.h"
 #include "tl_options.h"
+#include "tl_tile.h"
+#include "tl_time.h"
 #include "tl_write_queue.h"
 
 struct tl_h2o_ctx {
@@ -84,7 +84,7 @@ static h2o_pathconf_t* register_handler(h2o_hostconf_t* conf, const char* path,
 static int serve_tile(h2o_handler_t*, h2o_req_t* req) {
   int64_t req_start = tl_usec_now();
 
-  tl_h2o_ctx* h2o = (tl_h2o_ctx*)req->conn->ctx; 
+  tl_h2o_ctx* h2o = (tl_h2o_ctx*)req->conn->ctx;
   tilelite* tl = (tilelite*)h2o->user;
   h2o_generator_t gen = {NULL, NULL};
   tl_tile t = parse_tile(req->path.base, req->path.len);
@@ -177,13 +177,15 @@ int main(int argc, char** argv) {
 
   h2o_hostconf_t* hostconf = h2o_config_register_host(
       &conf.globalconf, h2o_iovec_init(H2O_STRLIT("default")), 65535);
-  register_handler(hostconf, "/", serve_tile);
+  register_handler(hostconf, "/tile", serve_tile);
+  h2o_file_register(h2o_config_register_path(hostconf, "/", 0), "ui", NULL,
+                    NULL, 0);
 
   const char* db_file = opt["tile_db"].c_str();
 
   tl_write_queue* write_queue = NULL;
   if (conf.rendering) {
-    write_queue = (tl_write_queue*)calloc(1, sizeof(tl_write_queue)); 
+    write_queue = (tl_write_queue*)calloc(1, sizeof(tl_write_queue));
     tl_write_queue_init(write_queue, image_db_open(db_file));
   }
 

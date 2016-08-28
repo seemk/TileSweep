@@ -106,12 +106,13 @@ HitTest.prototype.check = function(pt) {
 };
 
 function tileURL(tile) {
-  return "http://localhost:9567" + "/" + tile.join("/");
+  return "/tile/" + tile.join("/");
 };
 
 function toRequest(tile, next, progress) {
+  var url = tileURL(tile);
   var req = new XMLHttpRequest();
-  req.open("GET", tileURL(tile));
+  req.open("GET", url);
   req.onload = function() {
     progress();
     if (req.status < 200 || req.status >= 400) {
@@ -121,7 +122,7 @@ function toRequest(tile, next, progress) {
     }
   };
   req.onerror = function() {
-    console.log("Failed to render tile: " + tileURL(tile));
+    console.log("Failed to render tile: " + url);
     progress();
     next();
   };
@@ -157,7 +158,7 @@ TileRequestQueue.prototype.next = function() {
     return;
   }
 
-  var tile = this.tiles.splice(-1);
+  var tile = this.tiles.pop();
   var req = toRequest(tile, this.next.bind(this), this.onProcess.bind(this));
   req.send();
 };

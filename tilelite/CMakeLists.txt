@@ -11,8 +11,4 @@ SET(DISABLE_LIBUV ON)
 add_definitions(-DH2O_USE_LIBUV=0)
 add_subdirectory("third_party/h2o")
 
-include_directories(SYSTEM
-  "third_party/rapidjson/include"
-)
-
 add_subdirectory(src)

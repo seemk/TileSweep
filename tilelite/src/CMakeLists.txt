@@ -1,6 +1,6 @@
 find_package(Threads)
 
-include_directories("/usr/local/include/mapnik")
+include_directories(${MAPNIK_INCLUDE_DIR})
 
 add_executable(tilelite
   hash/xxhash.c
@@ -20,7 +20,7 @@ add_executable(tilelite
 
 target_link_libraries(
   tilelite
-  mapnik
+  ${MAPNIK_LIBRARY}
   icuuc
   libh2o-evloop
   ${CMAKE_THREAD_LIBS_INIT}

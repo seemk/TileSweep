@@ -1,6 +1,6 @@
 #include <fcntl.h>
-#include <signal.h>
 #include <h2o.h>
+#include <signal.h>
 #include "hash/xxhash.h"
 #include "image.h"
 #include "image_db.h"
@@ -91,10 +91,8 @@ static int serve_tile(h2o_handler_t*, h2o_req_t* req) {
   tl_tile t = parse_tile(req->path.base, req->path.len);
 
   h2o_start_response(req, &gen);
-  h2o_add_header(&req->pool, &req->res.headers,
-                 H2O_TOKEN_ACCESS_CONTROL_ALLOW_ORIGIN, H2O_STRLIT("*"));
 
-  if (!t.valid()) {
+  if (!t.valid() || (t.w != 256 && t.w != 512) || (t.h != 256 && t.h != 512)) {
     req->res.status = 400;
     req->res.reason = "Bad Request";
     h2o_send(req, &req->entity, 1, 1);
@@ -178,7 +176,7 @@ void set_signal_handler(int sig_num, void (*handler)(int sig_num)) {
 }
 
 int main(int argc, char** argv) {
-	set_signal_handler(SIGPIPE, SIG_IGN);
+  set_signal_handler(SIGPIPE, SIG_IGN);
 
   tl_options opt = parse_options(argc, argv);
   conf.opt = &opt;

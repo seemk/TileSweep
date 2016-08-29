@@ -120,8 +120,16 @@ static int serve_tile(h2o_handler_t*, h2o_req_t* req) {
   if (img.len > 0) {
     req->res.status = 200;
     req->res.reason = "OK";
+
     h2o_add_header(&req->pool, &req->res.headers, H2O_TOKEN_CONTENT_TYPE,
                    H2O_STRLIT("image/png"));
+
+    char content_length[8];
+    snprintf(content_length, 8, "%d", img.len);
+    size_t header_length = strlen(content_length);
+    h2o_add_header(&req->pool, &req->res.headers, H2O_TOKEN_CONTENT_LENGTH,
+                   content_length, header_length);
+
     h2o_iovec_t body;
     body.base = (char*)img.data;
     body.len = img.len;

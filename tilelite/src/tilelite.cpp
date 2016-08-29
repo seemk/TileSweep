@@ -39,7 +39,7 @@ static struct {
 
 static void on_accept(h2o_socket_t* listener, const char* err) {
   if (err != NULL) {
-    printf("Accept error: %s\n", err);
+    tl_log("accept error: %s", err);
     return;
   }
 

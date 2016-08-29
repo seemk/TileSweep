@@ -1,4 +1,5 @@
 #include <fcntl.h>
+#include <signal.h>
 #include <h2o.h>
 #include "hash/xxhash.h"
 #include "image.h"
@@ -166,7 +167,19 @@ void* run_loop(void* arg) {
   return NULL;
 }
 
+void set_signal_handler(int sig_num, void (*handler)(int sig_num)) {
+  struct sigaction action;
+
+  memset(&action, 0, sizeof(action));
+
+  sigemptyset(&action.sa_mask);
+  action.sa_handler = handler;
+  sigaction(sig_num, &action, nullptr);
+}
+
 int main(int argc, char** argv) {
+	set_signal_handler(SIGPIPE, SIG_IGN);
+
   tl_options opt = parse_options(argc, argv);
   conf.opt = &opt;
   conf.num_threads = sysconf(_SC_NPROCESSORS_ONLN);

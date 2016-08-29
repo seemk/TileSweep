@@ -8,8 +8,8 @@ static void set_defaults(tl_options* conf) {
     if (conf->count(key) == 0) (*conf)[key] = value;
   };
 
-  set_key("plugins", "");
-  set_key("fonts", "");
+  set_key("plugins", "/usr/local/lib/mapnik/input");
+  set_key("fonts", "/usr/share/fonts");
   set_key("tile_db", "tiles.db");
   set_key("host", "127.0.0.1");
   set_key("port", "9567");

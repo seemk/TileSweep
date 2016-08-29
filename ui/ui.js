@@ -231,21 +231,33 @@ function makePrerenderIndices(coordinates, minZoom, maxZoom, dim) {
 }
 
 function startProgressBar() {
-  byId("progress-bar").style.visibility = "visible";
+  byId("progressArea").style.visibility = "visible";
 }
 
 function finishRender() {
   state["rendering"] = false;
   state["requestPool"] = null;
-  submitButton.value = "Start";
+  submitButton.innerHTML = "Start";
 }
 
 function tileRenderProgress(done, total) {
   var t = 1.0 - done / total;
   var bar = byId("progress");
   var percentage = Math.min(t * 100.0, 100.0);
-  bar.style.width = percentage + "%";
-  bar.innerHTML = (total - done) + "/" + total;
+  bar.value = percentage;
+  byId("progressText").innerHTML = "<span>" + ((total - done) + "/" + total) + "</span>";
+}
+
+function showError(text) {
+  var err = byId("errorText");
+  err.style.visibility = "visible";
+  err.innerHTML = text;
+}
+
+function hideError() {
+  var err = byId("errorText");
+  err.style.visibility = "hidden";
+  err.innerHTML = "";
 }
 
 submitButton = document.getElementById("submit");
@@ -259,34 +271,38 @@ submitButton.addEventListener("click", function() {
   var normSize = byId("normSize").checked;
   var retinaSize = byId("retinaSize").checked;
   if (!normSize && !retinaSize) {
-    byId("errorText").innerHTML = "At least one tile size required.";
+    showError("At least one tile size required.");
     return;
   }
 
   if (!state["coordinates"]) {
-    byId("errorText").innerHTML = "No area selected.";
+    showError("No area selected.");
     return;
   }
 
   var coordinates = state["coordinates"];
   startProgressBar();
-  submitButton.value = "Cancel"; 
+  submitButton.innerHTML = "Cancel"; 
   state["rendering"] = true;
+
+  var indices = [];
   if (normSize) {
     var indicesNorm = makePrerenderIndices(coordinates, minZoom, maxZoom, 256);
+    indices = indices.concat(indicesNorm);
     console.log("256x256 tiles: " + indicesNorm.length);
-    var pool = new TileRequestQueue(indicesNorm, finishRender, tileRenderProgress);
-    state["requestPool"] = pool;
-    pool.start();
   }
 
   if (retinaSize) {
     var indicesRetina = makePrerenderIndices(coordinates, minZoom, maxZoom, 512);
+    indices = indices.concat(indicesRetina);
     console.log("512x512 tiles: " + indicesRetina.length);
   }
 
-  byId("errorText").innerHTML = "";
+  hideError();
 
+  var pool = new TileRequestQueue(indices, finishRender, tileRenderProgress);
+  state["requestPool"] = pool;
+  pool.start();
 });
 
 }

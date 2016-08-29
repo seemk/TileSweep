@@ -1,20 +1,13 @@
-add_library(sqlite
-  sqlite3/sqlite3.c
-)
-
 find_package(Threads)
 
 include_directories("/usr/local/include/mapnik")
-
-add_executable(tests
-  test/tests.cpp
-)
 
 add_executable(tilelite
   hash/xxhash.c
   image_db.cpp
   ini/ini.c
   parg/parg.c
+  sqlite3/sqlite3.c
   tcp.cpp
   tile_renderer.cpp
   tilelite.cpp
@@ -27,7 +20,6 @@ add_executable(tilelite
 
 target_link_libraries(
   tilelite
-  sqlite
   mapnik
   icuuc
   libh2o-evloop

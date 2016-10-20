@@ -1,6 +1,9 @@
 find_package(Threads)
 
-include_directories(${MAPNIK_INCLUDE_DIR})
+include_directories(
+  ${MAPNIK_INCLUDE_DIR}
+  "${CMAKE_SOURCE_DIR}/third_party/h2o/include"
+)
 
 add_executable(tilelite
   hash/xxhash.c

@@ -52,11 +52,14 @@ static void on_accept(h2o_socket_t* listener, const char* err) {
   h2o_accept(&tl->accept_ctx, socket);
 }
 
-void tilelite_init(tilelite* tl, const tl_options* opt) {
+bool tilelite_init(tilelite* tl, const tl_options* opt) {
   if (opt->at("rendering") == "1") {
     tl->render_enabled = true;
-    tile_renderer_init(&tl->renderer, opt->at("mapnik_xml").c_str(),
-                       opt->at("plugins").c_str(), opt->at("fonts").c_str());
+    if (!tile_renderer_init(&tl->renderer, opt->at("mapnik_xml").c_str(),
+                            opt->at("plugins").c_str(),
+                            opt->at("fonts").c_str())) {
+      return false;
+    }
   } else {
     tl->render_enabled = false;
   }
@@ -70,6 +73,8 @@ void tilelite_init(tilelite* tl, const tl_options* opt) {
                                         H2O_SOCKET_FLAG_DONT_READ);
   tl->socket->data = tl;
   h2o_socket_read_start(tl->socket, on_accept);
+
+  return true;
 }
 
 static h2o_pathconf_t* register_handler(h2o_hostconf_t* conf, const char* path,
@@ -164,7 +169,11 @@ void* run_loop(void* arg) {
 
   tilelite* tl = &conf.threads[idx];
   tl->index = idx;
-  tilelite_init(tl, conf.opt);
+
+  if (!tilelite_init(tl, conf.opt)) {
+    tl_log("[%ld] failed to initialize", idx);
+    return NULL;
+  }
 
   tl_log("[%ld] ready", idx);
   while (h2o_evloop_run(tl->ctx.super.loop) == 0) {

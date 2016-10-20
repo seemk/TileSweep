@@ -2,6 +2,10 @@ function byId(id) { return document.getElementById(id); }
 
 function UI() {
 
+function updateZoomLabel(z) {
+  byId("currentZoom").innerHTML = z;
+}
+
 var TileRequestQueue = function(tiles, onFinish, onProgress, parallel) {
   this.tiles = tiles || [];
   this.initialCount = this.tiles.length;
@@ -202,6 +206,12 @@ var map = new ol.Map({
     center: ol.proj.fromLonLat([24.747583, 59.461970]),
     zoom: 7
   })
+});
+
+updateZoomLabel(map.getView().getZoom());
+
+map.on("moveend", function() {
+  updateZoomLabel(map.getView().getZoom());
 });
 
 var type = 'Polygon';

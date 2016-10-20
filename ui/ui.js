@@ -315,6 +315,14 @@ submitButton.addEventListener("click", function() {
   pool.start();
 });
 
+document.onkeydown = function(evt) {
+  // escape
+  if (evt.keyCode == 27) {
+    map.removeInteraction(draw);
+    map.addInteraction(draw);
+  }
+};
+
 }
 
 (function() {

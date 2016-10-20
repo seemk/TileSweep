@@ -22,17 +22,15 @@ bool register_fonts(const char* fonts_path) {
 
 bool tile_renderer_init(tile_renderer* renderer, const char* mapnik_xml_path,
                         const char* plugins_path, const char* fonts_path) {
-  mapnik::logger::instance().set_severity(mapnik::logger::none);
-  register_plugins(plugins_path);
-  register_fonts(fonts_path);
-
-  renderer->map = new mapnik::Map();
   try {
+    mapnik::logger::instance().set_severity(mapnik::logger::none);
+    register_plugins(plugins_path);
+    register_fonts(fonts_path);
+    renderer->map.reset(new mapnik::Map());
     mapnik::load_map(*renderer->map, mapnik_xml_path);
   } catch (std::exception& e) {
     tl_log("mapnik load error: %s", e.what());
-    delete renderer->map;
-    renderer->map = nullptr;
+    renderer->map.reset();
     return false;
   }
 
@@ -77,8 +75,4 @@ bool render_tile(tile_renderer* renderer, const tl_tile* tile, image* image) {
   memcpy(image->data, output_png.data(), output_png.size());
 
   return true;
-}
-
-void tile_renderer_destroy(tile_renderer* renderer) {
-  if (renderer->map) delete renderer->map;
 }

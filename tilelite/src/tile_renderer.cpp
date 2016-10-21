@@ -15,7 +15,7 @@
 void mapnik_global_init(const char* plugins_path, const char* fonts_path) {
   static std::once_flag done;
 
-  std::call_once(done, []() {
+  std::call_once(done, [=]() {
     mapnik::logger::instance().set_severity(mapnik::logger::none);
     mapnik::datasource_cache::instance().register_datasources(plugins_path);
     mapnik::freetype_engine::register_fonts(fonts_path, true);

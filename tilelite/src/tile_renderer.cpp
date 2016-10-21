@@ -10,22 +10,22 @@
 #include "tl_log.h"
 #include "tl_tile.h"
 #include "tl_math.h"
+#include <mutex>
 
-bool register_plugins(const char* plugins_path) {
-  mapnik::datasource_cache::instance().register_datasources(plugins_path);
-  return 0;
-}
+void mapnik_global_init(const char* plugins_path, const char* fonts_path) {
+  static std::once_flag done;
 
-bool register_fonts(const char* fonts_path) {
-  return mapnik::freetype_engine::register_fonts(fonts_path, true);
+  std::call_once(done, []() {
+    mapnik::logger::instance().set_severity(mapnik::logger::none);
+    mapnik::datasource_cache::instance().register_datasources(plugins_path);
+    mapnik::freetype_engine::register_fonts(fonts_path, true);
+  });
 }
 
 bool tile_renderer_init(tile_renderer* renderer, const char* mapnik_xml_path,
                         const char* plugins_path, const char* fonts_path) {
   try {
-    mapnik::logger::instance().set_severity(mapnik::logger::none);
-    register_plugins(plugins_path);
-    register_fonts(fonts_path);
+    mapnik_global_init(plugins_path, fonts_path);
     renderer->map.reset(new mapnik::Map());
     mapnik::load_map(*renderer->map, mapnik_xml_path);
   } catch (std::exception& e) {

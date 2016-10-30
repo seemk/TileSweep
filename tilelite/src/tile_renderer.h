@@ -11,6 +11,7 @@ class Map;
 
 struct tile_renderer {
   std::unique_ptr<mapnik::Map> map;
+  ~tile_renderer();
 };
 
 bool register_plugins(const char* plugins_path);

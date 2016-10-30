@@ -19,6 +19,7 @@ add_executable(tilelite
   tl_tile.cpp
   tl_time.cpp
   tl_write_queue.cpp
+  tl_jobdb.cpp
 )
 
 target_link_libraries(

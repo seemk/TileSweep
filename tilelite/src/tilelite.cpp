@@ -5,12 +5,18 @@
 #include "image.h"
 #include "image_db.h"
 #include "tcp.h"
-#include "tile_renderer.h"
+#include "tl_jobdb.h"
 #include "tl_log.h"
 #include "tl_options.h"
 #include "tl_tile.h"
 #include "tl_time.h"
 #include "tl_write_queue.h"
+#include "tile_renderer.h"
+
+enum tilelite_result {
+  res_ok,
+  res_failure
+};
 
 struct tl_h2o_ctx {
   h2o_context_t super;
@@ -27,6 +33,8 @@ struct tilelite {
   size_t index;
   tl_write_queue* write_queue;
   bool render_enabled;
+
+  ~tilelite() {}
 };
 
 static struct {
@@ -87,6 +95,28 @@ static h2o_pathconf_t* register_handler(h2o_hostconf_t* conf, const char* path,
   return path_conf;
 }
 
+static int serve_job_get(h2o_handler_t*, h2o_req_t* req) {
+  printf("jobs get\n");
+  tl_h2o_ctx* h2o = (tl_h2o_ctx*)req->conn->ctx;
+  tilelite* tl = (tilelite*)h2o->user;
+  h2o_generator_t gen = {NULL, NULL};
+  return 0;
+}
+
+static int serve_job_post(h2o_handler_t*, h2o_req_t* req) {
+  return -1;
+}
+
+static int serve_job_request(h2o_handler_t* handler, h2o_req_t* req) {
+  if (h2o_memis(req->method.base, req->method.len, H2O_STRLIT("GET"))) {
+    return serve_job_get(handler, req);
+  } else if (h2o_memis(req->method.base, req->method.len, H2O_STRLIT("POST"))) {
+    return serve_job_post(handler, req);
+  }
+  
+  return -1;
+}
+
 static int serve_tile(h2o_handler_t*, h2o_req_t* req) {
   int64_t req_start = tl_usec_now();
 
@@ -107,7 +137,9 @@ static int serve_tile(h2o_handler_t*, h2o_req_t* req) {
   uint64_t pos_hash = t.hash();
   image img;
 
+  tilelite_result result = res_ok;
   bool existing = image_db_fetch(tl->db, pos_hash, t.w, t.h, &img);
+
   if (tl->render_enabled && !existing) {
     if (render_tile(&tl->renderer, &t, &img)) {
       uint64_t image_hash = XXH64(img.data, img.len, 0);
@@ -119,6 +151,8 @@ static int serve_tile(h2o_handler_t*, h2o_req_t* req) {
       write_img.data = (uint8_t*)calloc(write_img.len, 1);
       memcpy(write_img.data, img.data, img.len);
       tl_write_queue_push(tl->write_queue, t, write_img, image_hash);
+    } else {
+      result = res_failure;
     }
   }
 
@@ -141,8 +175,11 @@ static int serve_tile(h2o_handler_t*, h2o_req_t* req) {
     h2o_send(req, &body, 1, 1);
     free(img.data);
   } else {
-    req->res.status = 204;
-    req->res.reason = "No Content";
+    if (result == res_failure) {
+    } else {
+      req->res.status = 204;
+      req->res.reason = "No Content";
+    }
     h2o_send(req, &req->entity, 1, 1);
   }
 
@@ -206,6 +243,7 @@ int main(int argc, char** argv) {
   h2o_hostconf_t* hostconf = h2o_config_register_host(
       &conf.globalconf, h2o_iovec_init(H2O_STRLIT("default")), 65535);
   register_handler(hostconf, "/tile", serve_tile);
+  register_handler(hostconf, "/jobs", serve_job_request);
   h2o_file_register(h2o_config_register_path(hostconf, "/", 0), "ui", NULL,
                     NULL, 0);
 

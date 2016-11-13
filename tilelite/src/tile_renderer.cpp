@@ -6,11 +6,15 @@
 #include <mapnik/load_map.hpp>
 #include <mapnik/map.hpp>
 #include <mapnik/well_known_srs.hpp>
-#include "image.h"
-#include "tl_log.h"
-#include "tl_tile.h"
-#include "tl_math.h"
+#include <memory>
 #include <mutex>
+#include "tl_log.h"
+#include "tl_math.h"
+
+struct tile_renderer {
+  tile_renderer(std::unique_ptr<mapnik::Map> map) : map(std::move(map)) {}
+  std::unique_ptr<mapnik::Map> map;
+};
 
 void mapnik_global_init(const char* plugins_path, const char* fonts_path) {
   static std::once_flag done;
@@ -22,22 +26,27 @@ void mapnik_global_init(const char* plugins_path, const char* fonts_path) {
   });
 }
 
-bool tile_renderer_init(tile_renderer* renderer, const char* mapnik_xml_path,
-                        const char* plugins_path, const char* fonts_path) {
+tile_renderer* tile_renderer_create(const char* mapnik_xml_path,
+                                    const char* plugins_path,
+                                    const char* fonts_path) {
   try {
     mapnik_global_init(plugins_path, fonts_path);
-    renderer->map.reset(new mapnik::Map());
-    mapnik::load_map(*renderer->map, mapnik_xml_path);
+    std::unique_ptr<mapnik::Map> map =
+        std::unique_ptr<mapnik::Map>(new mapnik::Map());
+    mapnik::load_map(*map, mapnik_xml_path);
+    return new tile_renderer(std::move(map));
   } catch (std::exception& e) {
     tl_log("mapnik load error: %s", e.what());
-    renderer->map.reset();
-    return false;
   }
 
-  return true;
+  return nullptr;
 }
 
-bool render_tile(tile_renderer* renderer, const tl_tile* tile, image* image) {
+void tile_renderer_destroy(tile_renderer* renderer) { delete renderer; }
+
+int32_t render_tile(tile_renderer* renderer, const tl_tile* tile,
+                    image* image) {
+  tl_log("rendering tile %d %d %d\n", tile->x, tile->y, tile->z);
   vec3d p1_xyz{double(tile->x), double(tile->y), double(tile->z)};
   vec3d p2_xyz{double(tile->x + 1), double(tile->y + 1), double(tile->z)};
   vec2d p1 = xyz_to_latlon(p1_xyz);
@@ -62,7 +71,7 @@ bool render_tile(tile_renderer* renderer, const tl_tile* tile, image* image) {
     ren.apply();
   } catch (std::exception& e) {
     tl_log("error rendering tile:\n %s", e.what());
-    return false;
+    return 1;
   }
 
   std::string output_png = mapnik::save_to_string(buf, "png8");
@@ -74,5 +83,5 @@ bool render_tile(tile_renderer* renderer, const tl_tile* tile, image* image) {
   image->data = (uint8_t*)calloc(1, output_png.size());
   memcpy(image->data, output_png.data(), output_png.size());
 
-  return true;
+  return 0;
 }

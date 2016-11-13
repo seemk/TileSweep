@@ -1,21 +1,22 @@
 #pragma once
+#include <stdint.h>
+#include "image.h"
+#include "tl_tile.h"
 
-#include <memory>
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-struct tl_tile;
-struct image;
+typedef struct tile_renderer tile_renderer;
 
-namespace mapnik {
-class Map;
-};
+int32_t register_plugins(const char* plugins_path);
+int32_t register_fonts(const char* fonts_path);
+tile_renderer* tile_renderer_create(const char* mapnik_xml_path,
+                                    const char* plugins_path,
+                                    const char* fonts_path);
+void tile_renderer_destroy(tile_renderer* renderer);
+int32_t render_tile(tile_renderer* renderer, const tl_tile* tile, image* image);
 
-struct tile_renderer {
-  std::unique_ptr<mapnik::Map> map;
-  ~tile_renderer();
-};
-
-bool register_plugins(const char* plugins_path);
-bool register_fonts(const char* fonts_path);
-bool tile_renderer_init(tile_renderer* renderer, const char* mapnik_xml_path,
-                        const char* plugins_path, const char* fonts_path);
-bool render_tile(tile_renderer* renderer, const tl_tile* tile, image* image);
+#ifdef __cplusplus
+}
+#endif

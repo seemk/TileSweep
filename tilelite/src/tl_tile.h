@@ -1,20 +1,28 @@
 #pragma once
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
-struct tl_tile {
-  int x;
-  int y;
-  int z;
-  int w;
-  int h;
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-  uint64_t hash() const {
-    return (uint64_t(z) << 40) | (uint64_t(x) << 20) | uint64_t(y);
-  }
+typedef struct {
+  int32_t x;
+  int32_t y;
+  int32_t z;
+  int32_t w;
+  int32_t h;
+} tl_tile;
 
-  bool valid() const { return w > 0 && h > 0 && x > -1 && y > -1 && z > -1; }
-};
+inline uint64_t tile_hash(const tl_tile* t) {
+  return ((uint64_t)t->z << 40) | ((uint64_t)t->x << 20) | (uint64_t)t->y;
+}
+
+int32_t tile_valid(const tl_tile* t);
 
 tl_tile parse_tile(const char* s, size_t len);
+
+#ifdef __cplusplus
+}
+#endif

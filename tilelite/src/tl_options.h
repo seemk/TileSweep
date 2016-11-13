@@ -1,8 +1,13 @@
 #pragma once
 
-#include <unordered_map>
-#include <string>
+typedef struct {
+  const char* plugins;
+  const char* fonts;
+  const char* database;
+  const char* host;
+  const char* port;
+  const char* rendering;
+  const char* mapnik_xml;
+} tl_options;
 
-typedef std::unordered_map<std::string, std::string> tl_options;
-
-tl_options parse_options(int argc, char** argv);
+tl_options tl_options_parse(int argc, char** argv);

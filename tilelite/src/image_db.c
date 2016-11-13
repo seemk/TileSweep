@@ -2,9 +2,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "image.h"
-#include "tl_log.h"
+#include <math.h>
 #include "sqlite3/sqlite3.h"
+#include "tl_log.h"
 
 image_db* image_db_open(const char* db_file) {
   sqlite3* sqlite_db = NULL;
@@ -92,8 +92,8 @@ void image_db_close(image_db* db) {
   free(db);
 }
 
-bool image_db_fetch(const image_db* db, uint64_t position_hash, int width,
-                    int height, image* img) {
+int32_t image_db_fetch(const image_db* db, uint64_t position_hash, int width,
+                       int height, image* img) {
   sqlite3_reset(db->fetch_query);
 
   sqlite3_bind_int64(db->fetch_query, 1, position_hash);
@@ -116,14 +116,14 @@ bool image_db_fetch(const image_db* db, uint64_t position_hash, int width,
     img->data = (uint8_t*)calloc(num_bytes, 1);
     memcpy(img->data, blob, num_bytes);
 
-    return true;
+    return 1;
   }
 
-  return false;
+  return 0;
 }
 
-bool image_db_add_position(image_db* db, uint64_t position_hash,
-                           uint64_t image_hash) {
+int32_t image_db_add_position(image_db* db, uint64_t position_hash,
+                              uint64_t image_hash) {
   sqlite3_stmt* query = db->insert_position;
 
   sqlite3_reset(query);
@@ -137,10 +137,11 @@ bool image_db_add_position(image_db* db, uint64_t position_hash,
     tl_log("add position failed %d: %s", res, sqlite3_errstr(res));
   }
 
-  return res == SQLITE_DONE;
+  return res == SQLITE_DONE ? 0 : 1;
 }
 
-bool image_db_add_image(image_db* db, const image* img, uint64_t image_hash) {
+int32_t image_db_add_image(image_db* db, const image* img,
+                           uint64_t image_hash) {
   sqlite3_stmt* query = db->insert_image;
 
   sqlite3_reset(query);
@@ -156,5 +157,5 @@ bool image_db_add_image(image_db* db, const image* img, uint64_t image_hash) {
     tl_log("add image failed %d: %s", res, sqlite3_errstr(res));
   }
 
-  return res == SQLITE_DONE;
+  return res == SQLITE_DONE ? 0 : 1;
 }

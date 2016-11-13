@@ -5,44 +5,39 @@
 #include "image.h"
 #include "image_db.h"
 #include "tcp.h"
-#include "tl_jobdb.h"
+#include "tile_renderer.h"
 #include "tl_log.h"
 #include "tl_options.h"
 #include "tl_tile.h"
 #include "tl_time.h"
 #include "tl_write_queue.h"
-#include "tile_renderer.h"
+#include "cpu.h"
 
-enum tilelite_result {
-  res_ok,
-  res_failure
-};
+typedef enum { res_ok, res_failure } tilelite_result;
 
-struct tl_h2o_ctx {
+typedef struct {
   h2o_context_t super;
   void* user;
-};
+} tl_h2o_ctx;
 
-struct tilelite {
+typedef struct {
   h2o_accept_ctx_t accept_ctx;
   h2o_socket_t* socket;
   tl_h2o_ctx ctx;
   image_db* db;
-  tile_renderer renderer;
+  tile_renderer* renderer;
   int fd;
   size_t index;
   tl_write_queue* write_queue;
-  bool render_enabled;
-
-  ~tilelite() {}
-};
+  int render_enabled;
+} tilelite;
 
 static struct {
   h2o_globalconf_t globalconf;
   tl_options* opt;
   size_t num_threads;
   tilelite* threads;
-  bool rendering;
+  int rendering;
 } conf;
 
 static void on_accept(h2o_socket_t* listener, const char* err) {
@@ -60,16 +55,16 @@ static void on_accept(h2o_socket_t* listener, const char* err) {
   h2o_accept(&tl->accept_ctx, socket);
 }
 
-bool tilelite_init(tilelite* tl, const tl_options* opt) {
-  if (opt->at("rendering") == "1") {
-    tl->render_enabled = true;
-    if (!tile_renderer_init(&tl->renderer, opt->at("mapnik_xml").c_str(),
-                            opt->at("plugins").c_str(),
-                            opt->at("fonts").c_str())) {
-      return false;
+int tilelite_init(tilelite* tl, const tl_options* opt) {
+  if (strcmp(opt->rendering, "1") == 0) {
+    tl->render_enabled = 1;
+    tl->renderer =
+        tile_renderer_create(opt->mapnik_xml, opt->plugins, opt->fonts);
+    if (!tl->renderer) {
+      return 1;
     }
   } else {
-    tl->render_enabled = false;
+    tl->render_enabled = 0;
   }
 
   h2o_context_init(&tl->ctx.super, h2o_evloop_create(), &conf.globalconf);
@@ -82,7 +77,7 @@ bool tilelite_init(tilelite* tl, const tl_options* opt) {
   tl->socket->data = tl;
   h2o_socket_read_start(tl->socket, on_accept);
 
-  return true;
+  return 0;
 }
 
 static h2o_pathconf_t* register_handler(h2o_hostconf_t* conf, const char* path,
@@ -95,7 +90,7 @@ static h2o_pathconf_t* register_handler(h2o_hostconf_t* conf, const char* path,
   return path_conf;
 }
 
-static int serve_job_get(h2o_handler_t*, h2o_req_t* req) {
+static int serve_job_get(h2o_handler_t* h, h2o_req_t* req) {
   printf("jobs get\n");
   tl_h2o_ctx* h2o = (tl_h2o_ctx*)req->conn->ctx;
   tilelite* tl = (tilelite*)h2o->user;
@@ -103,9 +98,7 @@ static int serve_job_get(h2o_handler_t*, h2o_req_t* req) {
   return 0;
 }
 
-static int serve_job_post(h2o_handler_t*, h2o_req_t* req) {
-  return -1;
-}
+static int serve_job_post(h2o_handler_t* h, h2o_req_t* req) { return -1; }
 
 static int serve_job_request(h2o_handler_t* handler, h2o_req_t* req) {
   if (h2o_memis(req->method.base, req->method.len, H2O_STRLIT("GET"))) {
@@ -113,11 +106,11 @@ static int serve_job_request(h2o_handler_t* handler, h2o_req_t* req) {
   } else if (h2o_memis(req->method.base, req->method.len, H2O_STRLIT("POST"))) {
     return serve_job_post(handler, req);
   }
-  
+
   return -1;
 }
 
-static int serve_tile(h2o_handler_t*, h2o_req_t* req) {
+static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
   int64_t req_start = tl_usec_now();
 
   tl_h2o_ctx* h2o = (tl_h2o_ctx*)req->conn->ctx;
@@ -127,21 +120,21 @@ static int serve_tile(h2o_handler_t*, h2o_req_t* req) {
 
   h2o_start_response(req, &gen);
 
-  if (!t.valid() || (t.w != 256 && t.w != 512) || (t.h != 256 && t.h != 512)) {
+  if (!tile_valid(&t) || (t.w != 256 && t.w != 512) ||
+      (t.h != 256 && t.h != 512)) {
     req->res.status = 400;
     req->res.reason = "Bad Request";
     h2o_send(req, &req->entity, 1, 1);
     return 0;
   }
 
-  uint64_t pos_hash = t.hash();
-  image img;
+  uint64_t pos_hash = tile_hash(&t);
+  image img = {.width = 0, .height = 0, .len = 0, .data = NULL};
 
   tilelite_result result = res_ok;
-  bool existing = image_db_fetch(tl->db, pos_hash, t.w, t.h, &img);
-
+  int32_t existing = image_db_fetch(tl->db, pos_hash, t.w, t.h, &img);
   if (tl->render_enabled && !existing) {
-    if (render_tile(&tl->renderer, &t, &img)) {
+    if (render_tile(tl->renderer, &t, &img)) {
       uint64_t image_hash = XXH64(img.data, img.len, 0);
 
       image write_img;
@@ -186,8 +179,7 @@ static int serve_tile(h2o_handler_t*, h2o_req_t* req) {
   int64_t req_time = tl_usec_now() - req_start;
   if (req_time > 1000) {
     tl_log("[%lu] [%d, %d, %d, %d, %d] (%d bytes) | %.2f ms [e: %d]", tl->index,
-           t.w, t.h, t.z, t.x, t.y, img.len, double(req_time) / 1000.0,
-           existing);
+           t.w, t.h, t.z, t.x, t.y, img.len, req_time / 1000.0, existing);
   } else {
     tl_log("[%lu] [%d, %d, %d, %d, %d] (%d bytes) | %ld us [e: %d]", tl->index,
            t.w, t.h, t.z, t.x, t.y, img.len, req_time, existing);
@@ -197,17 +189,12 @@ static int serve_tile(h2o_handler_t*, h2o_req_t* req) {
 }
 
 void* run_loop(void* arg) {
-  long idx = long(arg);
-
-  cpu_set_t c;
-  CPU_ZERO(&c);
-  CPU_SET(idx, &c);
-  pthread_setaffinity_np(pthread_self(), sizeof(c), &c);
+  long idx = (long)arg;
 
   tilelite* tl = &conf.threads[idx];
   tl->index = idx;
 
-  if (!tilelite_init(tl, conf.opt)) {
+  if (tilelite_init(tl, conf.opt)) {
     tl_log("[%ld] failed to initialize", idx);
     return NULL;
   }
@@ -226,17 +213,17 @@ void set_signal_handler(int sig_num, void (*handler)(int sig_num)) {
 
   sigemptyset(&action.sa_mask);
   action.sa_handler = handler;
-  sigaction(sig_num, &action, nullptr);
+  sigaction(sig_num, &action, NULL);
 }
 
 int main(int argc, char** argv) {
   set_signal_handler(SIGPIPE, SIG_IGN);
 
-  tl_options opt = parse_options(argc, argv);
+  tl_options opt = tl_options_parse(argc, argv);
   conf.opt = &opt;
-  conf.num_threads = sysconf(_SC_NPROCESSORS_ONLN);
+  conf.num_threads = cpu_core_count();
   conf.threads = (tilelite*)calloc(conf.num_threads, sizeof(tilelite));
-  conf.rendering = opt["rendering"] == "1";
+  conf.rendering = strcmp(opt.rendering, "1") == 0;
 
   h2o_config_init(&conf.globalconf);
 
@@ -247,15 +234,12 @@ int main(int argc, char** argv) {
   h2o_file_register(h2o_config_register_path(hostconf, "/", 0), "ui", NULL,
                     NULL, 0);
 
-  const char* db_file = opt["tile_db"].c_str();
-
   tl_write_queue* write_queue = NULL;
   if (conf.rendering) {
-    write_queue = (tl_write_queue*)calloc(1, sizeof(tl_write_queue));
-    tl_write_queue_init(write_queue, image_db_open(db_file));
+    write_queue = tl_write_queue_create(image_db_open(opt.database));
   }
 
-  int sock_fd = bind_tcp(opt["host"].c_str(), opt["port"].c_str());
+  int sock_fd = bind_tcp(opt.host, opt.port);
   if (sock_fd == -1) {
     tl_log("failed to bind socket");
     return 1;
@@ -263,7 +247,7 @@ int main(int argc, char** argv) {
 
   for (size_t i = 0; i < conf.num_threads; i++) {
     tilelite* tl = &conf.threads[i];
-    tl->db = image_db_open(db_file);
+    tl->db = image_db_open(opt.database);
     tl->write_queue = write_queue;
     tl->fd = sock_fd;
   }

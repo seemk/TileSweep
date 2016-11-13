@@ -1,8 +1,9 @@
 #pragma once
+#include <stdint.h>
 
-struct image {
-  int width = 0;
-  int height = 0;
-  int len = 0;
-  uint8_t* data = nullptr;
-};
+typedef struct {
+  int32_t width;
+  int32_t height;
+  int32_t len;
+  uint8_t* data;
+} image;

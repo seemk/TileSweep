@@ -1,21 +1,27 @@
 #pragma once
 
 #include <stdint.h>
+#include "image.h"
 
-struct image;
-struct sqlite3;
-struct sqlite3_stmt;
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-struct image_db {
-  sqlite3* db;
-  sqlite3_stmt* fetch_query;
-  sqlite3_stmt* insert_position;
-  sqlite3_stmt* insert_image;
-};
+typedef struct {
+  struct sqlite3* db;
+  struct sqlite3_stmt* fetch_query;
+  struct sqlite3_stmt* insert_position;
+  struct sqlite3_stmt* insert_image;
+} image_db;
 
 image_db* image_db_open(const char* db_file);
 void image_db_close(image_db* db);
-bool image_db_fetch(const image_db* db, uint64_t position_hash, int width, int height, image* img);
-bool image_db_add_position(image_db* db, uint64_t position_hash,
-                           uint64_t image_hash);
-bool image_db_add_image(image_db* db, const image* img, uint64_t image_hash);
+int32_t image_db_fetch(const image_db* db, uint64_t position_hash,
+                       int32_t width, int32_t height, image* img);
+int32_t image_db_add_position(image_db* db, uint64_t position_hash,
+                              uint64_t image_hash);
+int32_t image_db_add_image(image_db* db, const image* img, uint64_t image_hash);
+
+#ifdef __cplusplus
+}
+#endif

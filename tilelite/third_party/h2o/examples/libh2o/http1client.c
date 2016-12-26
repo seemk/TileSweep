@@ -21,6 +21,7 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include "picohttpparser.h"
 #include "h2o/hostinfo.h"
 #include "h2o/socketpool.h"
 #include "h2o/string_.h"
@@ -35,7 +36,7 @@ static int cnt_left = 3;
 static h2o_http1client_head_cb on_connect(h2o_http1client_t *client, const char *errstr, h2o_iovec_t **reqbufs, size_t *reqbufcnt,
                                           int *method_is_head);
 static h2o_http1client_body_cb on_head(h2o_http1client_t *client, const char *errstr, int minor_version, int status,
-                                       h2o_iovec_t msg, h2o_http1client_header_t *headers, size_t num_headers);
+                                       h2o_iovec_t msg, struct phr_header *headers, size_t num_headers);
 
 static void start_request(h2o_http1client_ctx_t *ctx)
 {
@@ -96,7 +97,7 @@ static int on_body(h2o_http1client_t *client, const char *errstr)
 }
 
 h2o_http1client_body_cb on_head(h2o_http1client_t *client, const char *errstr, int minor_version, int status, h2o_iovec_t msg,
-                                h2o_http1client_header_t *headers, size_t num_headers)
+                                struct phr_header *headers, size_t num_headers)
 {
     size_t i;
 
@@ -175,7 +176,7 @@ int main(int argc, char **argv)
 #if H2O_USE_LIBUV
         uv_run(ctx.loop, UV_RUN_ONCE);
 #else
-        h2o_evloop_run(ctx.loop);
+        h2o_evloop_run(ctx.loop, INT32_MAX);
 #endif
     }
 

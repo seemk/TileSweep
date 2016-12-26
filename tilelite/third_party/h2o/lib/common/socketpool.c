@@ -124,8 +124,7 @@ void h2o_socketpool_init_by_address(h2o_socketpool_t *pool, struct sockaddr *sa,
 
 void h2o_socketpool_init_by_hostport(h2o_socketpool_t *pool, h2o_iovec_t host, uint16_t port, int is_ssl, size_t capacity)
 {
-    struct sockaddr_in sin;
-    memset(&sin, 0, sizeof(sin));
+    struct sockaddr_in sin = {};
 
     if (h2o_hostinfo_aton(host, &sin.sin_addr) == 0) {
         sin.sin_family = AF_INET;

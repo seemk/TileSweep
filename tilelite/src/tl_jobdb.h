@@ -4,9 +4,7 @@
 #include <vector>
 #include "tl_math.h"
 
-struct sqlite3;
-struct sqlite3_stmt;
-
+typedef struct tl_jobdb tl_jobdb;
 struct tl_job {
   std::vector<vec2d> coordinates;
 };
@@ -17,5 +15,5 @@ struct tl_jobdb {
   ~tl_jobdb();
 };
 
-std::unique_ptr<tl_jobdb> tl_jobdb_open(const char* file_name);
+tl_jobdb* tl_jobdb_open(const char* file_name);
 std::vector<tl_job> tl_jobdb_unfinished_jobs(tl_jobdb* db);

@@ -200,7 +200,7 @@ void* run_loop(void* arg) {
   }
 
   tl_log("[%ld] ready", idx);
-  while (h2o_evloop_run(tl->ctx.super.loop) == 0) {
+  while (h2o_evloop_run(tl->ctx.super.loop, INT32_MAX) == 0) {
   }
 
   return NULL;

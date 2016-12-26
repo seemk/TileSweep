@@ -149,7 +149,7 @@ static struct st_h2o_uv_socket_t *create_socket(h2o_loop_t *loop)
         free(tcp);
         return NULL;
     }
-    return (void *)h2o_uv_socket_create((void *)tcp, (uv_close_cb)free);
+    return (void *)h2o_uv_socket_create((void *)tcp, (void *)free);
 }
 
 int do_export(h2o_socket_t *_sock, h2o_socket_export_t *info)
@@ -197,6 +197,8 @@ h2o_socket_t *h2o_uv_socket_create(uv_stream_t *stream, uv_close_cb close_cb)
 
 static void on_connect(uv_connect_t *conn, int status)
 {
+    if (status == UV_ECANCELED)
+        return;
     struct st_h2o_uv_socket_t *sock = H2O_STRUCT_FROM_MEMBER(struct st_h2o_uv_socket_t, _creq, conn);
     h2o_socket_cb cb = sock->super._cb.write;
     sock->super._cb.write = NULL;

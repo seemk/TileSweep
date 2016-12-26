@@ -32,7 +32,7 @@ static size_t sz_min(size_t x, size_t y)
 }
 
 h2o_http2_stream_t *h2o_http2_stream_open(h2o_http2_conn_t *conn, uint32_t stream_id, h2o_req_t *src_req,
-                                          const h2o_http2_priority_t *received_priority)
+                                          const h2o_http2_priority_t *received_priority, int is_prio)
 {
     h2o_http2_stream_t *stream = h2o_mem_alloc(sizeof(*stream));
 
@@ -54,7 +54,7 @@ h2o_http2_stream_t *h2o_http2_stream_open(h2o_http2_conn_t *conn, uint32_t strea
         memset(&stream->req.upgrade, 0, sizeof(stream->req.upgrade));
     stream->req._ostr_top = &stream->_ostr_final;
 
-    h2o_http2_conn_register_stream(conn, stream);
+    h2o_http2_conn_register_stream(conn, stream, is_prio);
 
     ++conn->num_streams.priority.open;
     stream->_num_streams_slot = &conn->num_streams.priority;
@@ -67,8 +67,6 @@ void h2o_http2_stream_close(h2o_http2_conn_t *conn, h2o_http2_stream_t *stream)
     h2o_http2_conn_unregister_stream(conn, stream);
     if (stream->_req_body != NULL)
         h2o_buffer_dispose(&stream->_req_body);
-    if (stream->cache_digests != NULL)
-        h2o_cache_digests_destroy(stream->cache_digests);
     h2o_dispose_request(&stream->req);
     if (stream->stream_id == 1 && conn->_http1_req_input != NULL)
         h2o_buffer_dispose(&conn->_http1_req_input);
@@ -213,37 +211,20 @@ static int send_headers(h2o_http2_conn_t *conn, h2o_http2_stream_t *stream)
     if (h2o_http2_stream_is_push(stream->stream_id)) {
         if (400 <= stream->req.res.status)
             goto CancelPush;
-        if (stream->cache_digests != NULL) {
-            ssize_t etag_index = h2o_find_header(&stream->req.headers, H2O_TOKEN_ETAG, -1);
-            if (etag_index != -1) {
-                h2o_iovec_t url = h2o_concat(&stream->req.pool, stream->req.input.scheme->name, h2o_iovec_init(H2O_STRLIT("://")),
-                                             stream->req.input.authority, stream->req.input.path);
-                h2o_iovec_t *etag = &stream->req.headers.entries[etag_index].value;
-                if (h2o_cache_digests_lookup_by_url_and_etag(stream->cache_digests, url.base, url.len, etag->base, etag->len) ==
-                    H2O_CACHE_DIGESTS_STATE_FRESH)
-                    goto CancelPush;
-            }
-        }
-    }
-
-    /* reset casper cookie in case cache-digests exist */
-    if (stream->cache_digests != NULL && stream->req.hostconf->http2.casper.capacity_bits != 0) {
-        h2o_add_header(&stream->req.pool, &stream->req.res.headers, H2O_TOKEN_SET_COOKIE,
-                       H2O_STRLIT("h2o_casper=; Path=/; Expires=Sat, 01 Jan 2000 00:00:00 GMT"));
     }
 
     /* CASPER */
     if (conn->casper != NULL) {
         /* update casper if necessary */
         if (stream->req.hostconf->http2.casper.track_all_types || is_blocking_asset(&stream->req)) {
-            if (h2o_http2_casper_lookup(conn->casper, stream->req.path.base, stream->req.path.len, 1)) {
+            ssize_t etag_index = h2o_find_header(&stream->req.headers, H2O_TOKEN_ETAG, -1);
+            h2o_iovec_t etag = etag_index != -1 ? stream->req.headers.entries[etag_index].value : (h2o_iovec_t){};
+            if (h2o_http2_casper_lookup(conn->casper, stream->req.path.base, stream->req.path.len, etag.base, etag.len, 1)) {
                 /* cancel if the pushed resource is already marked as cached */
                 if (h2o_http2_stream_is_push(stream->stream_id))
                     goto CancelPush;
             }
         }
-        if (stream->cache_digests != NULL)
-            goto SkipCookie;
         /* browsers might ignore push responses, or they may process the responses in a different order than they were pushed.
          * Therefore H2O tries to include casper cookie only in the last stream that may be received by the client, or when the
          * value become stable; see also: https://github.com/h2o/h2o/issues/421
@@ -257,7 +238,8 @@ static int send_headers(h2o_http2_conn_t *conn, h2o_http2_stream_t *stream)
         }
         h2o_iovec_t cookie = h2o_http2_casper_get_cookie(conn->casper);
         h2o_add_header(&stream->req.pool, &stream->req.res.headers, H2O_TOKEN_SET_COOKIE, cookie.base, cookie.len);
-    SkipCookie:;
+    SkipCookie:
+        ;
     }
 
     if (h2o_http2_stream_is_push(stream->stream_id)) {
@@ -292,7 +274,7 @@ CancelPush:
     h2o_http2_stream_set_state(conn, stream, H2O_HTTP2_STREAM_STATE_END_STREAM);
     h2o_linklist_insert(&conn->_write.streams_to_proceed, &stream->_refs.link);
     if (stream->push.promise_sent) {
-        h2o_http2_encode_rst_stream_frame(&conn->_write.buf, stream->stream_id, H2O_HTTP2_ERROR_INTERNAL);
+        h2o_http2_encode_rst_stream_frame(&conn->_write.buf, stream->stream_id, -H2O_HTTP2_ERROR_INTERNAL);
         h2o_http2_conn_request_write(conn);
     }
     return -1;

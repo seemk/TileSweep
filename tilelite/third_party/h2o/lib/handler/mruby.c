@@ -41,7 +41,7 @@
 #define STATUS_FALLTHRU 399
 #define FALLTHRU_SET_PREFIX "x-fallthru-set-"
 
-#define FREEZE_STRING(v) RSTR_SET_FROZEN_FLAG(mrb_str_ptr(v))
+#define FREEZE_STRING(v) MRB_SET_FROZEN_FLAG(mrb_obj_ptr(v))
 
 __thread h2o_mruby_generator_t *h2o_mruby_current_generator = NULL;
 
@@ -400,7 +400,7 @@ static void on_rack_input_free(mrb_state *mrb, const char *base, mrb_int len, vo
     *input_stream = mrb_nil_value();
 }
 
-static int build_env_sort_header_cb(const void *_x, const void *_y)
+int build_env_sort_header_cb(const void *_x, const void *_y)
 {
     const h2o_header_t *x = (const h2o_header_t *)_x, *y = (const h2o_header_t *)_y;
     if (x->name->len < y->name->len)
@@ -605,7 +605,7 @@ static void send_response(h2o_mruby_generator_t *generator, mrb_int status, mrb_
 {
     mrb_state *mrb = generator->ctx->mrb;
     mrb_value body;
-    h2o_iovec_t content = {NULL};
+    h2o_iovec_t content = {};
 
     /* set status */
     generator->req->res.status = (int)status;
@@ -681,7 +681,7 @@ static void send_response(h2o_mruby_generator_t *generator, mrb_int status, mrb_
 
 GotException:
     report_exception(generator->req, mrb);
-    h2o_send_error_500(generator->req, "Internal Server Error", "Internal Server Error", 0);
+    h2o_send_error(generator->req, 500, "Internal Server Error", "Internal Server Error", 0);
 }
 
 void h2o_mruby_run_fiber(h2o_mruby_generator_t *generator, mrb_value receiver, mrb_value input, int *is_delegate)
@@ -778,7 +778,7 @@ GotException:
     if (generator->req != NULL) {
         report_exception(generator->req, mrb);
         if (generator->req->_generator == NULL) {
-            h2o_send_error_500(generator->req, "Internal Server Error", "Internal Server Error", 0);
+            h2o_send_error(generator->req, 500, "Internal Server Error", "Internal Server Error", 0);
         } else {
             h2o_mruby_send_chunked_close(generator);
         }

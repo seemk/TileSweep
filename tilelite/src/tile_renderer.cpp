@@ -46,7 +46,6 @@ void tile_renderer_destroy(tile_renderer* renderer) { delete renderer; }
 
 int32_t render_tile(tile_renderer* renderer, const tl_tile* tile,
                     image* image) {
-  tl_log("rendering tile %d %d %d\n", tile->x, tile->y, tile->z);
   vec3d p1_xyz{double(tile->x), double(tile->y), double(tile->z)};
   vec3d p2_xyz{double(tile->x + 1), double(tile->y + 1), double(tile->z)};
   vec2d p1 = xyz_to_latlon(p1_xyz);

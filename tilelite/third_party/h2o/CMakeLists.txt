@@ -1,5 +1,4 @@
-# Copyright (c) 2014,2015 DeNA Co., Ltd., Kazuho Oku, Brian Stanback, Laurentiu Nicola, Masanori Ogino, Ryosuke Matsumoto,
-#                         David Carlier
+# Copyright (c) 2014,2015 DeNA Co., Ltd., Kazuho Oku, Brian Stanback, Laurentiu Nicola, Masanori Ogino, Ryosuke Matsumoto
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to
@@ -25,13 +24,13 @@ CMAKE_POLICY(SET CMP0003 NEW)
 PROJECT(h2o)
 
 SET(VERSION_MAJOR "2")
-SET(VERSION_MINOR "1")
-SET(VERSION_PATCH "0")
-SET(VERSION_PRERELEASE "-DEV")
+SET(VERSION_MINOR "0")
+SET(VERSION_PATCH "5")
+SET(VERSION_PRERELEASE "")
 SET(VERSION "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}${VERSION_PRERELEASE}")
 SET(LIBRARY_VERSION_MAJOR "0")
-SET(LIBRARY_VERSION_MINOR "12")
-SET(LIBRARY_VERSION_PATCH "0")
+SET(LIBRARY_VERSION_MINOR "11")
+SET(LIBRARY_VERSION_PATCH "5")
 SET(LIBRARY_VERSION "${LIBRARY_VERSION_MAJOR}.${LIBRARY_VERSION_MINOR}.${LIBRARY_VERSION_PATCH}${VERSION_PRERELEASE}")
 SET(LIBRARY_SOVERSION "${LIBRARY_VERSION_MAJOR}.${LIBRARY_VERSION_MINOR}")
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/version.h.in ${CMAKE_CURRENT_SOURCE_DIR}/include/h2o/version.h)
@@ -45,8 +44,6 @@ FIND_PACKAGE(Threads REQUIRED)
 
 FIND_PACKAGE(OpenSSL)
 FIND_PACKAGE(ZLIB REQUIRED)
-
-INCLUDE(GNUInstallDirs)
 
 SET(WITH_BUNDLED_SSL_DEFAULT "ON")
 IF ((NOT UNIX) OR CYGWIN)
@@ -116,7 +113,7 @@ ENDIF (PKG_CONFIG_FOUND)
 IF (NOT LIBUV_FOUND)
     FIND_PACKAGE(LibUV)
     IF (LIBUV_FOUND AND LIBUV_VERSION VERSION_LESS "1.0.0")
-        MESSAGE(STATUS "libuv found but ignored; is too old")
+        MESSAGE(INFO "libuv found but ignored; is too old")
         UNSET(LIBUV_FOUND)
     ENDIF ()
     IF (LIBUV_FOUND)
@@ -126,10 +123,6 @@ ENDIF (NOT LIBUV_FOUND)
 IF (NOT LIBUV_FOUND)
     SET(LIBUV_LIBRARIES -luv)
 ENDIF (NOT LIBUV_FOUND)
-IF (DISABLE_LIBUV)
-    MESSAGE(STATUS "ignoring found libuv because of DISABLE_LIBUV")
-    SET(LIBUV_FOUND FALSE)
-ENDIF(DISABLE_LIBUV)
 
 IF (PKG_CONFIG_FOUND)
     PKG_CHECK_MODULES(WSLAY libwslay)
@@ -163,7 +156,7 @@ IF ("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU")
     ENDIF ()
 ENDIF ()
 
-SET(CMAKE_C_FLAGS "-O2 -g ${CC_WARNING_FLAGS} ${CMAKE_C_FLAGS} -DH2O_ROOT=\"${CMAKE_INSTALL_PREFIX}\" -DH2O_CONFIG_PATH=\"${CMAKE_INSTALL_SYSCONFDIR}/h2o.conf\"")
+SET(CMAKE_C_FLAGS "-O2 -g ${CC_WARNING_FLAGS} ${CMAKE_C_FLAGS} -DH2O_ROOT=\"${CMAKE_INSTALL_PREFIX}\"")
 SET(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS}")
 
 SET(LIBYAML_SOURCE_FILES
@@ -245,10 +238,7 @@ SET(LIB_SOURCE_FILES
     lib/handler/proxy.c
     lib/handler/redirect.c
     lib/handler/reproxy.c
-    lib/handler/throttle_resp.c
     lib/handler/status.c
-    lib/handler/status/events.c
-    lib/handler/status/requests.c
     lib/handler/configurator/access_log.c
     lib/handler/configurator/compress.c
     lib/handler/configurator/errordoc.c
@@ -259,14 +249,12 @@ SET(LIB_SOURCE_FILES
     lib/handler/configurator/proxy.c
     lib/handler/configurator/redirect.c
     lib/handler/configurator/reproxy.c
-    lib/handler/configurator/throttle_resp.c
     lib/handler/configurator/status.c
 
     lib/http1.c
 
     lib/tunnel.c
 
-    lib/http2/cache_digests.c
     lib/http2/casper.c
     lib/http2/connection.c
     lib/http2/frame.c
@@ -297,7 +285,6 @@ SET(UNIT_TEST_SOURCE_FILES
     t/00unit/lib/handler/headers.c
     t/00unit/lib/handler/mimemap.c
     t/00unit/lib/handler/redirect.c
-    t/00unit/lib/http2/cache_digests.c
     t/00unit/lib/http2/casper.c
     t/00unit/lib/http2/hpack.c
     t/00unit/lib/http2/scheduler.c
@@ -322,7 +309,6 @@ LIST(REMOVE_ITEM UNIT_TEST_SOURCE_FILES
     lib/handler/headers.c
     lib/handler/mimemap.c
     lib/handler/redirect.c
-    lib/http2/cache_digests.c
     lib/http2/casper.c
     lib/http2/hpack.c
     lib/http2/scheduler.c)
@@ -333,19 +319,13 @@ IF (ZLIB_FOUND)
     LIST(INSERT EXTRA_LIBS 0 ${ZLIB_LIBRARIES})
 ENDIF (ZLIB_FOUND)
 
-IF (WSLAY_FOUND)
-    ADD_LIBRARY(libh2o lib/websocket.c ${LIB_SOURCE_FILES})
-    ADD_LIBRARY(libh2o-evloop lib/websocket.c ${LIB_SOURCE_FILES})
-ELSE ()
-    ADD_LIBRARY(libh2o ${LIB_SOURCE_FILES})
-    ADD_LIBRARY(libh2o-evloop ${LIB_SOURCE_FILES})
-ENDIF (WSLAY_FOUND)
-
+ADD_LIBRARY(libh2o ${LIB_SOURCE_FILES})
 SET_TARGET_PROPERTIES(libh2o PROPERTIES
     OUTPUT_NAME h2o
     VERSION ${LIBRARY_VERSION}
     SOVERSION ${LIBRARY_SOVERSION})
 TARGET_LINK_LIBRARIES(libh2o ${LIBUV_LIBRARIES} ${EXTRA_LIBS})
+ADD_LIBRARY(libh2o-evloop ${LIB_SOURCE_FILES})
 SET_TARGET_PROPERTIES(libh2o-evloop PROPERTIES
     OUTPUT_NAME h2o-evloop
     COMPILE_FLAGS "-DH2O_USE_LIBUV=0"
@@ -359,12 +339,12 @@ IF (OPENSSL_FOUND)
     TARGET_LINK_LIBRARIES(libh2o ${OPENSSL_LIBRARIES})
     TARGET_LINK_LIBRARIES(libh2o-evloop ${OPENSSL_LIBRARIES})
     IF (LIBUV_FOUND AND NOT WITHOUT_LIBS)
-        INSTALL(TARGETS libh2o DESTINATION ${CMAKE_INSTALL_LIBDIR})
+        INSTALL(TARGETS libh2o DESTINATION lib)
     ELSE ()
         SET_TARGET_PROPERTIES(libh2o PROPERTIES EXCLUDE_FROM_ALL 1)
     ENDIF ()
     IF (NOT WITHOUT_LIBS)
-	INSTALL(TARGETS libh2o-evloop DESTINATION ${CMAKE_INSTALL_LIBDIR})
+	INSTALL(TARGETS libh2o-evloop DESTINATION lib)
     ELSE ()
         SET_TARGET_PROPERTIES(libh2o-evloop PROPERTIES EXCLUDE_FROM_ALL 1)
     ENDIF()
@@ -397,12 +377,6 @@ ADD_EXECUTABLE(examples-websocket lib/websocket.c examples/libh2o/websocket.c)
 SET_TARGET_PROPERTIES(examples-websocket PROPERTIES
     EXCLUDE_FROM_ALL 1)
 TARGET_LINK_LIBRARIES(examples-websocket libh2o ${LIBUV_LIBRARIES} ${WSLAY_LIBRARIES} ${EXTRA_LIBS})
-
-ADD_EXECUTABLE(examples-latency-optimization examples/libh2o/latency-optimization.c)
-SET_TARGET_PROPERTIES(examples-latency-optimization PROPERTIES
-    COMPILE_FLAGS "-DH2O_USE_LIBUV=0"
-    EXCLUDE_FROM_ALL 1)
-TARGET_LINK_LIBRARIES(examples-latency-optimization libh2o-evloop ${EXTRA_LIBS})
 
 # standalone server directly links to libh2o using evloop
 SET(STANDALONE_SOURCE_FILES
@@ -452,24 +426,24 @@ ENDIF (WITH_MRUBY)
 TARGET_LINK_LIBRARIES(h2o ${EXTRA_LIBS})
 
 INSTALL(TARGETS h2o
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib)
 
 IF (NOT WITHOUT_LIBS)
-    INSTALL(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} FILES_MATCHING PATTERN "*.h")
+    INSTALL(DIRECTORY include/ DESTINATION include FILES_MATCHING PATTERN "*.h")
     IF (LIBUV_FOUND)
-        INSTALL(FILES "${CMAKE_BINARY_DIR}/libh2o.pc" DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+        INSTALL(FILES "${CMAKE_BINARY_DIR}/libh2o.pc" DESTINATION lib/pkgconfig)
     ENDIF ()
-    INSTALL(FILES "${CMAKE_BINARY_DIR}/libh2o-evloop.pc" DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+    INSTALL(FILES "${CMAKE_BINARY_DIR}/libh2o-evloop.pc" DESTINATION lib/pkgconfig)
 ENDIF ()
 
-INSTALL(PROGRAMS share/h2o/annotate-backtrace-symbols share/h2o/fastcgi-cgi share/h2o/fetch-ocsp-response share/h2o/kill-on-close share/h2o/setuidgid share/h2o/start_server DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/h2o)
-INSTALL(FILES share/h2o/ca-bundle.crt DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/h2o)
-INSTALL(FILES share/h2o/status/index.html DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/h2o/status)
-INSTALL(DIRECTORY doc/ DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/doc/h2o PATTERN "Makefile" EXCLUDE PATTERN "README.md" EXCLUDE)
-INSTALL(DIRECTORY examples/ DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/doc/h2o/examples)
+INSTALL(PROGRAMS share/h2o/annotate-backtrace-symbols share/h2o/fastcgi-cgi share/h2o/fetch-ocsp-response share/h2o/kill-on-close share/h2o/setuidgid share/h2o/start_server DESTINATION share/h2o)
+INSTALL(FILES share/h2o/ca-bundle.crt DESTINATION share/h2o)
+INSTALL(FILES share/h2o/status/index.html DESTINATION share/h2o/status)
+INSTALL(DIRECTORY doc/ DESTINATION share/doc/h2o PATTERN "Makefile" EXCLUDE PATTERN "README.md" EXCLUDE)
+INSTALL(DIRECTORY examples/ DESTINATION share/doc/h2o/examples)
 IF (WITH_MRUBY)
-    INSTALL(DIRECTORY share/h2o/mruby DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/h2o)
+    INSTALL(DIRECTORY share/h2o/mruby DESTINATION share/h2o)
 ENDIF (WITH_MRUBY)
 
 # tests
@@ -478,32 +452,24 @@ SET_TARGET_PROPERTIES(t-00unit-evloop.t PROPERTIES
     COMPILE_FLAGS "-DH2O_USE_LIBUV=0 -DH2O_USE_BROTLI=1 -DH2O_UNITTEST=1"
     EXCLUDE_FROM_ALL 1)
 TARGET_LINK_LIBRARIES(t-00unit-evloop.t ${EXTRA_LIBS})
-
-IF (LIBUV_FOUND)
-    ADD_EXECUTABLE(t-00unit-libuv.t ${UNIT_TEST_SOURCE_FILES})
-    SET_TARGET_PROPERTIES(t-00unit-libuv.t PROPERTIES
-        COMPILE_FLAGS "-DH2O_USE_BROTLI=1 -DH2O_UNITTEST=1"
-        EXCLUDE_FROM_ALL 1)
-    TARGET_LINK_LIBRARIES(t-00unit-libuv.t ${LIBUV_LIBRARIES} ${EXTRA_LIBS})
-ENDIF (LIBUV_FOUND)
-
+ADD_EXECUTABLE(t-00unit-libuv.t ${UNIT_TEST_SOURCE_FILES})
+SET_TARGET_PROPERTIES(t-00unit-libuv.t PROPERTIES
+    COMPILE_FLAGS "-DH2O_USE_BROTLI=1 -DH2O_UNITTEST=1"
+    EXCLUDE_FROM_ALL 1)
+TARGET_LINK_LIBRARIES(t-00unit-libuv.t ${LIBUV_LIBRARIES} ${EXTRA_LIBS})
 IF (WITH_BUNDLED_SSL)
     TARGET_INCLUDE_DIRECTORIES(t-00unit-evloop.t BEFORE PUBLIC ${BUNDLED_SSL_INCLUDE_DIR})
     TARGET_LINK_LIBRARIES(t-00unit-evloop.t ${BUNDLED_SSL_LIBRARIES})
     ADD_DEPENDENCIES(t-00unit-evloop.t bundled-ssl)
-    IF (LIBUV_FOUND)
-        TARGET_INCLUDE_DIRECTORIES(t-00unit-libuv.t BEFORE PUBLIC ${BUNDLED_SSL_INCLUDE_DIR})
-        TARGET_LINK_LIBRARIES(t-00unit-libuv.t ${BUNDLED_SSL_LIBRARIES})
-        ADD_DEPENDENCIES(t-00unit-libuv.t bundled-ssl)
-    ENDIF (LIBUV_FOUND)
+    TARGET_INCLUDE_DIRECTORIES(t-00unit-libuv.t BEFORE PUBLIC ${BUNDLED_SSL_INCLUDE_DIR})
+    TARGET_LINK_LIBRARIES(t-00unit-libuv.t ${BUNDLED_SSL_LIBRARIES})
+    ADD_DEPENDENCIES(t-00unit-libuv.t bundled-ssl)
 ELSE (WITH_BUNDLED_SSL)
     IF (OPENSSL_FOUND)
         TARGET_INCLUDE_DIRECTORIES(t-00unit-evloop.t PUBLIC ${OPENSSL_INCLUDE_DIR})
         TARGET_LINK_LIBRARIES(t-00unit-evloop.t ${OPENSSL_LIBRARIES})
-        IF (LIBUV_FOUND)
-            TARGET_INCLUDE_DIRECTORIES(t-00unit-libuv.t PUBLIC ${OPENSSL_INCLUDE_DIR})
-            TARGET_LINK_LIBRARIES(t-00unit-libuv.t ${OPENSSL_LIBRARIES})
-        ENDIF (LIBUV_FOUND)
+        TARGET_INCLUDE_DIRECTORIES(t-00unit-libuv.t PUBLIC ${OPENSSL_INCLUDE_DIR})
+        TARGET_LINK_LIBRARIES(t-00unit-libuv.t ${OPENSSL_LIBRARIES})
     ENDIF (OPENSSL_FOUND)
 ENDIF (WITH_BUNDLED_SSL)
 
@@ -521,13 +487,13 @@ ADD_CUSTOM_TARGET(check-as-root env H2O_ROOT=. BINARY_DIR=${CMAKE_CURRENT_BINARY
 IF (APPLE)
     SET_SOURCE_FILES_PROPERTIES(lib/socket.c lib/websocket.c src/main.c examples/simple.c examples/websocket.c PROPERTIES COMPILE_FLAGS -Wno-deprecated-declarations)
 ELSEIF (CMAKE_SYSTEM_NAME STREQUAL "Linux")
-     SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_GNU_SOURCE")
-     IF (WITH_BUNDLED_SSL)
-         TARGET_LINK_LIBRARIES(h2o "rt")
-         TARGET_LINK_LIBRARIES(t-00unit-evloop.t "rt")
-         IF (LIBUV_FOUND)
-             TARGET_LINK_LIBRARIES(t-00unit-libuv.t "rt")
-         ENDIF (LIBUV_FOUND)
+    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_GNU_SOURCE")
+    IF (WITH_BUNDLED_SSL)
+       TARGET_LINK_LIBRARIES(h2o "rt")
+       TARGET_LINK_LIBRARIES(t-00unit-evloop.t "rt")
+       IF (LIBUV_FOUND)
+          TARGET_LINK_LIBRARIES(t-00unit-libuv.t "rt")
+       ENDIF (LIBUV_FOUND)
     ENDIF (WITH_BUNDLED_SSL)
 ENDIF (APPLE)
 IF ("${CMAKE_SYSTEM_NAME}" MATCHES "SunOS")
@@ -535,6 +501,6 @@ IF ("${CMAKE_SYSTEM_NAME}" MATCHES "SunOS")
     TARGET_LINK_LIBRARIES(h2o "socket" "nsl")
     TARGET_LINK_LIBRARIES(t-00unit-evloop.t "socket" "nsl")
     IF (LIBUV_FOUND)
-        TARGET_LINK_LIBRARIES(t-00unit-libuv.t "socket" "nsl")
+       TARGET_LINK_LIBRARIES(t-00unit-libuv.t "socket" "nsl")
     ENDIF (LIBUV_FOUND)
 ENDIF ("${CMAKE_SYSTEM_NAME}" MATCHES "SunOS")

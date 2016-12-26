@@ -87,7 +87,7 @@ Exit:
 
 static void test_serialize_tickets(void)
 {
-    session_ticket_vector_t orig = {NULL}, parsed = {NULL};
+    session_ticket_vector_t orig = {}, parsed = {};
     h2o_iovec_t serialized;
     char errstr[256];
     int ret;

@@ -68,7 +68,7 @@ static void redirect_internally(h2o_redirect_handler_t *self, h2o_req_t *req, h2
         break;
     default:
         method = h2o_iovec_init(H2O_STRLIT("GET"));
-        req->entity = (h2o_iovec_t){NULL};
+        req->entity = (h2o_iovec_t){};
         break;
     }
 
@@ -76,13 +76,13 @@ static void redirect_internally(h2o_redirect_handler_t *self, h2o_req_t *req, h2
     return;
 
 SendInternalError:
-    h2o_send_error_503(req, "Internal Server Error", "internal server error", 0);
+    h2o_send_error(req, 503, "Internal Server Error", "internal server error", 0);
 }
 
 static int on_req(h2o_handler_t *_self, h2o_req_t *req)
 {
     h2o_redirect_handler_t *self = (void *)_self;
-    h2o_iovec_t dest = h2o_build_destination(req, self->prefix.base, self->prefix.len, 1);
+    h2o_iovec_t dest = h2o_build_destination(req, self->prefix.base, self->prefix.len);
 
     /* redirect */
     if (self->internal) {

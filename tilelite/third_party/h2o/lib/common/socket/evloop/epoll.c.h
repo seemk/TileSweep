@@ -61,7 +61,8 @@ static int update_status(struct st_h2o_evloop_epoll_t *loop)
                     changed = 1;
                 }
             }
-            if (h2o_socket_is_writing(&sock->super)) {
+            if (h2o_socket_is_writing(&sock->super) &&
+                (sock->_wreq.cnt != 0 || (sock->_flags & H2O_SOCKET_FLAG_DONT_WRITE) != 0)) {
                 ev.events |= EPOLLOUT;
                 if ((sock->_flags & H2O_SOCKET_FLAG_IS_POLLED_FOR_WRITE) == 0) {
                     sock->_flags |= H2O_SOCKET_FLAG_IS_POLLED_FOR_WRITE;
@@ -100,7 +101,7 @@ static int update_status(struct st_h2o_evloop_epoll_t *loop)
     return 0;
 }
 
-int evloop_do_proceed(h2o_evloop_t *_loop)
+int evloop_do_proceed(h2o_evloop_t *_loop, int32_t max_wait)
 {
     struct st_h2o_evloop_epoll_t *loop = (struct st_h2o_evloop_epoll_t *)_loop;
     struct epoll_event events[256];
@@ -111,13 +112,11 @@ int evloop_do_proceed(h2o_evloop_t *_loop)
         return -1;
 
     /* poll */
-    nevents = epoll_wait(loop->ep, events, sizeof(events) / sizeof(events[0]), get_max_wait(&loop->super));
+    max_wait = adjust_max_wait(&loop->super, max_wait);
+    nevents = epoll_wait(loop->ep, events, sizeof(events) / sizeof(events[0]), max_wait);
     update_now(&loop->super);
     if (nevents == -1)
         return -1;
-
-    if (nevents != 0)
-        h2o_sliding_counter_start(&loop->super.exec_time_counter, loop->super._now);
 
     /* update readable flags, perform writes */
     for (i = 0; i != nevents; ++i) {

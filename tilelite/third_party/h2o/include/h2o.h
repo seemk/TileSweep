@@ -43,7 +43,6 @@ extern "C" {
 #include "h2o/http1client.h"
 #include "h2o/memory.h"
 #include "h2o/multithread.h"
-#include "h2o/rand.h"
 #include "h2o/socket.h"
 #include "h2o/string_.h"
 #include "h2o/time_.h"
@@ -103,10 +102,10 @@ typedef struct st_h2o_logconf_t h2o_logconf_t;
 typedef struct st_h2o_token_t {
     h2o_iovec_t buf;
     char http2_static_table_name_index; /* non-zero if any */
-    unsigned char proxy_should_drop : 1;
-    unsigned char is_init_header_special : 1;
-    unsigned char http2_should_reject : 1;
-    unsigned char copy_for_push_request : 1;
+    char proxy_should_drop : 1;
+    char is_init_header_special : 1;
+    char http2_should_reject : 1;
+    char copy_for_push_request : 1;
 } h2o_token_t;
 
 #include "h2o/token.h"
@@ -263,11 +262,7 @@ struct st_h2o_hostconf_t {
          * whether if blocking assets being pulled should be given highest priority in case of clients that do not implement
          * dependency-based prioritization
          */
-        unsigned reprioritize_blocking_assets : 1;
-        /**
-         * if server push should be used
-         */
-        unsigned push_preload : 1;
+        int reprioritize_blocking_assets;
         /**
          * casper settings
          */
@@ -280,15 +275,6 @@ typedef struct st_h2o_protocol_callbacks_t {
     int (*foreach_request)(h2o_context_t *ctx, int (*cb)(h2o_req_t *req, void *cbdata), void *cbdata);
 } h2o_protocol_callbacks_t;
 
-typedef h2o_iovec_t (*final_status_handler_cb)(void *ctx, h2o_globalconf_t *gconf, h2o_req_t *req);
-typedef struct st_h2o_status_handler_t {
-    h2o_iovec_t name;
-    void *(*init)(void); /* optional callback, allocates a context that will be passed to per_thread() */
-    void (*per_thread)(void *priv, h2o_context_t *ctx); /* optional callback, will be called for each thread */
-    h2o_iovec_t (* final)(void *ctx, h2o_globalconf_t *gconf, h2o_req_t *req); /* mandatory, will be passed the optional context */
-} h2o_status_handler_t;
-
-typedef H2O_VECTOR(h2o_status_handler_t) h2o_status_callbacks_t;
 struct st_h2o_globalconf_t {
     /**
      * a NULL-terminated list of host contexts (h2o_hostconf_t)
@@ -351,10 +337,6 @@ struct st_h2o_globalconf_t {
          */
         size_t max_streams_for_priority;
         /**
-         * conditions for latency optimization
-         */
-        h2o_socket_latency_optimization_conditions_t latency_optimization;
-        /**
          * list of callbacks
          */
         h2o_protocol_callbacks_t callbacks;
@@ -373,10 +355,6 @@ struct st_h2o_globalconf_t {
          * a boolean flag if set to true, instructs the proxy to preserve the x-forwarded-proto header passed by the client
          */
         int preserve_x_forwarded_proto;
-        /**
-         * a boolean flag if set to true, instructs the proxy to emit x-forwarded-proto and x-forwarded-for headers
-         */
-        int emit_x_forwarded_headers;
     } proxy;
 
     /**
@@ -393,7 +371,10 @@ struct st_h2o_globalconf_t {
     } filecache;
 
     /* status */
-    h2o_status_callbacks_t statuses;
+    struct {
+        /* optional callback set by the user of libh2o to feed additional json to the status handler */
+        h2o_iovec_t (*extra_status)(h2o_globalconf_t *conf, h2o_mem_pool_t *pool);
+    } status;
 
     size_t _num_config_slots;
 };
@@ -430,42 +411,6 @@ typedef struct st_h2o_mimemap_type_t {
     } data;
 } h2o_mimemap_type_t;
 
-/* defined as negated form of the error codes defined in HTTP2-spec section 7 */
-#define H2O_HTTP2_ERROR_NONE 0
-#define H2O_HTTP2_ERROR_PROTOCOL -1
-#define H2O_HTTP2_ERROR_INTERNAL -2
-#define H2O_HTTP2_ERROR_FLOW_CONTROL -3
-#define H2O_HTTP2_ERROR_SETTINGS_TIMEOUT -4
-#define H2O_HTTP2_ERROR_STREAM_CLOSED -5
-#define H2O_HTTP2_ERROR_FRAME_SIZE -6
-#define H2O_HTTP2_ERROR_REFUSED_STREAM -7
-#define H2O_HTTP2_ERROR_CANCEL -8
-#define H2O_HTTP2_ERROR_COMPRESSION -9
-#define H2O_HTTP2_ERROR_CONNECT -10
-#define H2O_HTTP2_ERROR_ENHANCE_YOUR_CALM -11
-#define H2O_HTTP2_ERROR_INADEQUATE_SECURITY -12
-#define H2O_HTTP2_ERROR_MAX 13
-/* end of the HTT2-spec defined errors */
-#define H2O_HTTP2_ERROR_INVALID_HEADER_CHAR                                                                                        \
-    -254 /* an internal value indicating that invalid characters were found in the header name or value */
-#define H2O_HTTP2_ERROR_INCOMPLETE -255 /* an internal value indicating that all data is not ready */
-#define H2O_HTTP2_ERROR_PROTOCOL_CLOSE_IMMEDIATELY -256
-
-enum {
-    /* http1 protocol errors */
-    H2O_STATUS_ERROR_400 = 0,
-    H2O_STATUS_ERROR_403,
-    H2O_STATUS_ERROR_404,
-    H2O_STATUS_ERROR_405,
-    H2O_STATUS_ERROR_413,
-    H2O_STATUS_ERROR_416,
-    H2O_STATUS_ERROR_417,
-    H2O_STATUS_ERROR_500,
-    H2O_STATUS_ERROR_502,
-    H2O_STATUS_ERROR_503,
-    H2O_STATUS_ERROR_MAX,
-};
-
 /**
  * context of the http server.
  */
@@ -482,10 +427,6 @@ struct st_h2o_context_t {
      * timeout structure to be used for registering 1-second timeout callbacks
      */
     h2o_timeout_t one_sec_timeout;
-    /**
-     * timeout structrue to be used for registering 100-milisecond timeout callbacks
-     */
-    h2o_timeout_t hundred_ms_timeout;
     /**
      * pointer to the global configuration
      */
@@ -538,20 +479,6 @@ struct st_h2o_context_t {
          * timeout entry used for graceful shutdown
          */
         h2o_timeout_entry_t _graceful_shutdown_timeout;
-        struct {
-            /**
-             * counter for http2 errors internally emitted by h2o
-             */
-            uint64_t protocol_level_errors[H2O_HTTP2_ERROR_MAX];
-            /**
-             * premature close on read
-             */
-            uint64_t read_closed;
-            /**
-             * premature close on write
-             */
-            uint64_t write_closed;
-        } events;
     } http2;
 
     struct {
@@ -575,11 +502,6 @@ struct st_h2o_context_t {
         struct timeval tv_at;
         h2o_timestamp_string_t *value;
     } _timestamp_cache;
-
-    /**
-     * counter for http1 error status internally emitted by h2o
-     */
-    uint64_t emitted_error_status[H2O_STATUS_ERROR_MAX];
 
     H2O_VECTOR(h2o_pathconf_t *) _pathconfs_inited;
 };
@@ -858,10 +780,6 @@ struct st_h2o_req_t {
      */
     h2o_iovec_t path_normalized;
     /**
-     * Map of indexes of `path_normalized` into the next character in `path`
-     */
-    size_t *norm_indexes;
-    /**
      * filters assigned per request
      */
     h2o_req_prefilter_t *prefilters;
@@ -1059,10 +977,9 @@ size_t h2o_stringify_protocol_version(char *dst, int version);
 /**
  * extracts path to be pushed from `Link: rel=prelead` header, duplicating the chunk (or returns {NULL,0} if none)
  */
-h2o_iovec_vector_t h2o_extract_push_path_from_link_header(h2o_mem_pool_t *pool, const char *value, size_t value_len,
-                                                          h2o_iovec_t base_path, const h2o_url_scheme_t *input_scheme,
-                                                          h2o_iovec_t input_authority, const h2o_url_scheme_t *base_scheme,
-                                                          h2o_iovec_t *base_authority);
+h2o_iovec_vector_t h2o_extract_push_path_from_link_header(h2o_mem_pool_t *pool, const char *value, size_t value_len, h2o_iovec_t base_path,
+                                                          const h2o_url_scheme_t *input_scheme, h2o_iovec_t input_authority,
+                                                          const h2o_url_scheme_t *base_scheme, h2o_iovec_t *base_authority);
 /**
  * return a bitmap of compressible types, by parsing the `accept-encoding` header
  */
@@ -1072,7 +989,7 @@ int h2o_get_compressible_types(const h2o_headers_t *headers);
 /**
  * builds destination URL or path, by contatenating the prefix and path_info of the request
  */
-h2o_iovec_t h2o_build_destination(h2o_req_t *req, const char *prefix, size_t prefix_len, int use_path_normalized);
+h2o_iovec_t h2o_build_destination(h2o_req_t *req, const char *prefix, size_t prefix_len);
 
 extern uint64_t h2o_connection_id;
 
@@ -1214,11 +1131,11 @@ h2o_hostconf_t *h2o_config_register_host(h2o_globalconf_t *config, h2o_iovec_t h
  * @param flags unused and must be set to zero
  *
  * Handling of the path argument has changed in version 2.0 (of the standard server).
- *
+ * 
  * Before 2.0, the function implicitely added a trailing `/` to the supplied path (if it did not end with a `/`), and when receiving
  * a HTTP request for a matching path without the trailing `/`, libh2o sent a 301 response redirecting the client to a URI with a
  * trailing `/`.
- *
+ * 
  * Since 2.0, the function retains the exact path given as the argument, and the handlers of the pathconf is invoked if one of the
  * following conditions are met:
  *
@@ -1226,11 +1143,6 @@ h2o_hostconf_t *h2o_config_register_host(h2o_globalconf_t *config, h2o_iovec_t h
  * * configuration path does not end with a `/`, and the request path begins with the configuration path followed by a `/`
  */
 h2o_pathconf_t *h2o_config_register_path(h2o_hostconf_t *hostconf, const char *path, int flags);
-/**
- * registers an extra status handler
- */
-void h2o_config_register_status_handler(h2o_globalconf_t *config, h2o_status_handler_t);
-void h2o_config_register_simple_status_handler(h2o_globalconf_t *config, h2o_iovec_t name, final_status_handler_cb status_handler);
 /**
  * disposes of the resources allocated for the global configuration
  */
@@ -1299,6 +1211,7 @@ static void h2o_context_set_filter_context(h2o_context_t *ctx, h2o_filter_t *fil
  * returns per-module context set by the on_context_init callback
  */
 static void *h2o_context_get_logger_context(h2o_context_t *ctx, h2o_logger_t *logger);
+
 /* built-in generators */
 
 enum {
@@ -1319,24 +1232,7 @@ void h2o_send_inline(h2o_req_t *req, const char *body, size_t len);
 /**
  * sends the given information as an error response to the client
  */
-void h2o_send_error_generic(h2o_req_t *req, int status, const char *reason, const char *body, int flags);
-#define H2O_SEND_ERROR_XXX(status)                                                                                                 \
-    static inline void h2o_send_error_##status(h2o_req_t *req, const char *reason, const char *body, int flags)                    \
-    {                                                                                                                              \
-        req->conn->ctx->emitted_error_status[H2O_STATUS_ERROR_##status]++;                                                         \
-        h2o_send_error_generic(req, status, reason, body, flags);                                                                  \
-    }
-
-H2O_SEND_ERROR_XXX(400)
-H2O_SEND_ERROR_XXX(403)
-H2O_SEND_ERROR_XXX(404)
-H2O_SEND_ERROR_XXX(405)
-H2O_SEND_ERROR_XXX(416)
-H2O_SEND_ERROR_XXX(417)
-H2O_SEND_ERROR_XXX(500)
-H2O_SEND_ERROR_XXX(502)
-H2O_SEND_ERROR_XXX(503)
-
+void h2o_send_error(h2o_req_t *req, int status, const char *reason, const char *body, int flags);
 /**
  * sends error response using zero timeout; can be called by output filters while processing the headers
  */
@@ -1364,7 +1260,10 @@ void h2o_req_log_error(h2o_req_t *req, const char *module, const char *fmt, ...)
 
 /* log */
 
-enum { H2O_LOGCONF_ESCAPE_APACHE, H2O_LOGCONF_ESCAPE_JSON };
+enum {
+    H2O_LOGCONF_ESCAPE_APACHE,
+    H2O_LOGCONF_ESCAPE_JSON
+};
 
 /**
  * compiles a log configuration
@@ -1461,7 +1360,11 @@ void h2o_chunked_register(h2o_pathconf_t *pathconf);
 
 /* lib/compress.c */
 
-enum { H2O_COMPRESS_FLAG_PARTIAL, H2O_COMPRESS_FLAG_FLUSH, H2O_COMPRESS_FLAG_EOS };
+enum {
+    H2O_COMPRESS_FLAG_PARTIAL,
+    H2O_COMPRESS_FLAG_FLUSH,
+    H2O_COMPRESS_FLAG_EOS
+};
 
 /**
  * compressor context
@@ -1504,16 +1407,6 @@ h2o_compress_context_t *h2o_compress_brotli_open(h2o_mem_pool_t *pool, int quali
  * registers the configurator for the gzip/brotli output filter
  */
 void h2o_compress_register_configurator(h2o_globalconf_t *conf);
-
-/* lib/handler/throttle_resp.c */
-/**
- * registers the throttle response filter
- */
-void h2o_throttle_resp_register(h2o_pathconf_t *pathconf);
-/**
- * configurator
- */
-void h2o_throttle_resp_register_configurator(h2o_globalconf_t *conf);
 
 /* lib/errordoc.c */
 

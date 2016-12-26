@@ -51,16 +51,6 @@ EOT
             my $resp = `nghttp $opts -n --stat '$proto://127.0.0.1:$port/index.txt?resp:link=</index.txt.gz>\%3b\%20rel=preload'`;
             like $resp, qr{\nid\s*responseEnd\s.*\s/index\.txt\?.*\s/index\.txt.gz\n}is;
         };
-        subtest "push-1xx" => sub {
-            my $out = `nghttp $opts -n --stat '$proto://127.0.0.1:$port/1xx-push/'`;
-            # index.js arrives < 100ms, and /1xx-push/ arrives > 1sec
-            $out = (split /^.*?\nid *responseEnd .*?\n/s, $out, 2)[1];
-            chomp $out;
-            my @responses = split /\n/, $out;
-            is scalar(@responses), 2, "2 responses";
-            like $responses[0], qr{\+[0-9]{1,2}\.[0-9]*ms .* /index.js$}, "index.js arrives < 100ms";
-            like $responses[1], qr{\+1\.[0-9]*s .* /1xx-push/$}, "/1xx-push/ arrives >= 1sec";
-        };
         subtest 'push-while-sleep' => sub {
             my $resp = `nghttp $opts -n --stat '$proto://127.0.0.1:$port/mruby/sleep-and-respond?sleep=1'`;
             like $resp, qr{\nid\s*responseEnd\s.*\s/index\.txt\.gz\n.*\s/mruby/sleep-and-respond}is;
@@ -204,42 +194,6 @@ EOT
             unlike $resp, qr{\nid\s*responseEnd\s.*\s/index\.js\n}is, "does not receives index.js";
         }
     };
-};
-
-subtest "cache-digest" => sub {
-    plan skip_all => 'node not found'
-        unless prog_exists('node');
-    my $server = spawn_h2o(sub {
-        my ($port, $tls_port) = @_;
-        return << "EOT";
-hosts:
-  "127.0.0.1:$tls_port":
-    paths:
-      /:
-        mruby.handler: |
-          Proc.new do |env|
-            case env["PATH_INFO"]
-            when "/index.txt"
-              [399, {"link" => "</index.js>; rel=preload"}, []]
-            else
-              [399, {}, []]
-            end
-          end
-        file.dir: t/assets/doc_root
-EOT
-    });
-    my $calc_digest = sub {
-        my $cmd = "node misc/cache-digest.js/cli.js -b @{[join ' ', map { qq{https://127.0.0.1:$server->{tls_port}$_} } @_]}";
-        my $digest = `$cmd`;
-        chomp $digest;
-        return "$digest; complete";
-    };
-    my $resp = `nghttp -H'cache-digest: @{[$calc_digest->()]}' -v -n --stat https://127.0.0.1:$server->{tls_port}/index.txt`;
-    like $resp, qr{\nid\s*responseEnd\s.*\s/index\.js\n.*\s/index.txt}is, "receives index.js then /index.txt";
-    $resp = `nghttp -H'cache-digest: @{[$calc_digest->("/index.js", "/style.css")]}' -v -n --stat https://127.0.0.1:$server->{tls_port}/index.txt`;
-    unlike $resp, qr{\nid\s*responseEnd\s.*\s/index\.js\n}is, "does not receive index.js";
-    $resp = `nghttp -H'cache-digest: @{[$calc_digest->("/script.js", "/style.css")]}' -v -n --stat https://127.0.0.1:$server->{tls_port}/index.txt`;
-    like $resp, qr{\nid\s*responseEnd\s.*\s/index\.js\n.*\s/index.txt}is, "receives index.js then /index.txt";
 };
 
 done_testing;

@@ -38,7 +38,7 @@ static int on_req(h2o_handler_t *_self, h2o_req_t *req)
     h2o_iovec_t *authority;
 
     /* setup overrides */
-    *overrides = (h2o_req_overrides_t){NULL};
+    *overrides = (h2o_req_overrides_t){};
     if (self->sockpool != NULL) {
         overrides->socketpool = self->sockpool;
     } else if (self->config.preserve_host) {
@@ -60,7 +60,7 @@ static int on_req(h2o_handler_t *_self, h2o_req_t *req)
 
     /* request reprocess */
     h2o_reprocess_request(req, req->method, scheme, *authority,
-                          h2o_build_destination(req, self->upstream.path.base, self->upstream.path.len, 0), overrides, 0);
+                          h2o_build_destination(req, self->upstream.path.base, self->upstream.path.len), overrides, 0);
 
     return 0;
 }

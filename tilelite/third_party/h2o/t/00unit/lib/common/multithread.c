@@ -47,7 +47,7 @@ struct {
 static void send_empty_message(h2o_multithread_receiver_t *receiver)
 {
     h2o_multithread_message_t *message = h2o_mem_alloc(sizeof(*message));
-    *message = (h2o_multithread_message_t){{NULL}};
+    *message = (h2o_multithread_message_t){};
     h2o_multithread_send_message(receiver, message);
 }
 
@@ -111,7 +111,7 @@ static void *worker_main(void *_unused)
 #if H2O_USE_LIBUV
         uv_run(worker_thread.loop, UV_RUN_ONCE);
 #else
-        h2o_evloop_run(worker_thread.loop);
+        h2o_evloop_run(worker_thread.loop, INT32_MAX);
 #endif
     }
 
@@ -139,7 +139,7 @@ void test_lib__common__multithread_c(void)
 #if H2O_USE_LIBUV
         uv_run(main_thread.loop, UV_RUN_ONCE);
 #else
-        h2o_evloop_run(main_thread.loop);
+        h2o_evloop_run(main_thread.loop, INT32_MAX);
 #endif
     }
 

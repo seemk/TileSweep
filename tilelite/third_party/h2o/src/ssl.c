@@ -166,11 +166,11 @@ static struct {
     PTHREAD_RWLOCK_INITIALIZER
 #endif
     ,
-    {NULL} /* tickets */
+    {} /* tickets */
 };
 
-static struct st_session_ticket_t *new_ticket(const EVP_CIPHER *cipher, const EVP_MD *md, uint64_t not_before, uint64_t not_after,
-                                              int fill_in)
+struct st_session_ticket_t *new_ticket(const EVP_CIPHER *cipher, const EVP_MD *md, uint64_t not_before, uint64_t not_after,
+                                       int fill_in)
 {
     struct st_session_ticket_t *ticket = h2o_mem_alloc(sizeof(*ticket) + cipher->key_len + md->block_size);
 
@@ -309,7 +309,7 @@ H2O_NORETURN static void *ticket_internal_updater(void *unused)
         update_tickets(&session_tickets.tickets, time(NULL));
         pthread_rwlock_unlock(&session_tickets.rwlock);
         /* sleep for certain amount of time */
-        sleep(120 - (h2o_rand() >> 16) % 7);
+        sleep(120 - (rand() >> 16) % 7);
     }
 }
 
@@ -427,7 +427,7 @@ static int parse_tickets(session_ticket_vector_t *tickets, const void *src, size
     yoml_t *doc;
     size_t i;
 
-    *tickets = (session_ticket_vector_t){NULL};
+    *tickets = (session_ticket_vector_t){};
     yaml_parser_initialize(&parser);
 
     yaml_parser_set_input_string(&parser, src, len);
@@ -479,7 +479,7 @@ static h2o_iovec_t serialize_tickets(session_ticket_vector_t *tickets)
     return data;
 Error:
     free(data.base);
-    return (h2o_iovec_t){NULL};
+    return (h2o_iovec_t){};
 }
 
 static int ticket_memcached_update_tickets(yrmcds *conn, h2o_iovec_t key, time_t now)
@@ -487,8 +487,8 @@ static int ticket_memcached_update_tickets(yrmcds *conn, h2o_iovec_t key, time_t
     yrmcds_response resp;
     yrmcds_error err;
     uint32_t serial;
-    session_ticket_vector_t tickets = {NULL};
-    h2o_iovec_t tickets_serialized = {NULL};
+    session_ticket_vector_t tickets = {};
+    h2o_iovec_t tickets_serialized = {};
     int retry = 0;
     char errbuf[256];
 
@@ -579,8 +579,8 @@ static int load_tickets_file(const char *fn)
 {
 #define ERR_PREFIX "failed to load session ticket secrets from file:%s:"
 
-    h2o_iovec_t data = {NULL};
-    session_ticket_vector_t tickets = {NULL};
+    h2o_iovec_t data = {};
+    session_ticket_vector_t tickets = {};
     char errbuf[256];
     int ret = -1;
 
@@ -892,15 +892,6 @@ static unsigned long thread_id_callback(void)
     return (unsigned long)pthread_self();
 }
 
-static int add_lock_callback(int *num, int amount, int type, const char *file, int line)
-{
-    (void)type;
-    (void)file;
-    (void)line;
-
-    return __sync_add_and_fetch(num, amount);
-}
-
 void init_openssl(void)
 {
     int nlocks = CRYPTO_num_locks(), i;
@@ -909,10 +900,7 @@ void init_openssl(void)
         pthread_mutex_init(mutexes + i, NULL);
     CRYPTO_set_locking_callback(lock_callback);
     CRYPTO_set_id_callback(thread_id_callback);
-    CRYPTO_set_add_lock_callback(add_lock_callback);
-
-    /* Dynamic locks are only used by the CHIL engine at this time */
-
+    /* TODO [OpenSSL] set dynlock callbacks for better performance */
     SSL_load_error_strings();
     SSL_library_init();
     OpenSSL_add_all_algorithms();

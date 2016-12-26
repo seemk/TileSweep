@@ -4,8 +4,9 @@ use Net::EmptyPort qw(check_port empty_port);
 use Test::More;
 use t::Util;
 
-plan skip_all => 'nghttp not found'
-    unless prog_exists('nghttp');
+
+plan skip_all => 'nc not found'
+    unless prog_exists('nc');
 
 my $upstream_port = empty_port();
 $| = 1;
@@ -31,21 +32,23 @@ hosts:
         proxy.reverse.url: http://127.0.0.1:$upstream_port
 EOT
 
-system("nghttp http://127.0.0.1:$server->{'port'}/ -H 'host: host.example.com' &");
+my $msg = "this is the message";
+open(NGHTTP, "nghttp -t 3 -w 1 -v http://127.0.0.1:$server->{'port'}/ -H 'host: host.example.com' 2>&1 |");
 
 my $req;
 $client_socket = $socket->accept();
 $client_socket->recv($req, 1024);
-$client_socket->send("HTTP/1.1 200 Ok\r\nConnection:close\r\n\r\nBody\r\n");
+$client_socket->send("HTTP/1.1 200 Ok\r\nConnection:close\r\n\r\n$msg");
 close($client_socket);
-$socket->close();
 
-my $host_headers = 0;
-foreach (split(/\r\n/, $req)) {
-    if (/^host:/i) {
-        $host_headers++
+my $worked = 1;
+while(<NGHTTP>) {
+    if (/Timeout/) {
+        $worked = 0;
     }
 }
 
-ok($host_headers == 1, "Only saw one host: header");
+ok($worked == 1, "The connection didn't timeout");
+
+$socket->close();
 done_testing();

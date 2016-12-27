@@ -1,25 +1,10 @@
 find_package(Threads)
 
 include_directories(
+  json
   ${MAPNIK_INCLUDE_DIR}
   "${CMAKE_SOURCE_DIR}/third_party/h2o/include"
 )
-
-#add_executable(tilelite
-#  hash/xxhash.c
-#  image_db.c
-#  ini/ini.c
-#  parg/parg.c
-#  sqlite3/sqlite3.c
-#  tcp.c
-#  tile_renderer.cpp
-#  tilelite.cpp
-#  tl_math.cpp
-#  tl_options.cpp
-#  tl_tile.c
-#  tl_time.c
-#  tl_write_queue.cpp
-#)
 
 add_executable(tilelite
   cpu.c
@@ -35,6 +20,7 @@ add_executable(tilelite
   tile_renderer.cpp
 
   ini/ini.c
+  json/parson.c
   sqlite3/sqlite3.c
   parg/parg.c
 )

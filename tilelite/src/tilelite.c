@@ -10,7 +10,9 @@
 #include "tl_options.h"
 #include "tl_tile.h"
 #include "tl_time.h"
+#include "tl_math.h"
 #include "tl_write_queue.h"
+#include "json/parson.h"
 #include "cpu.h"
 
 typedef enum { res_ok, res_failure } tilelite_result;
@@ -39,6 +41,13 @@ static struct {
   tilelite* threads;
   int rendering;
 } conf;
+
+typedef struct {
+  double min_zoom;
+  double max_zoom;
+  vec2d* coordinates;
+  size_t num_coordinates;
+} tl_prerender_req;
 
 static void on_accept(h2o_socket_t* listener, const char* err) {
   if (err != NULL) {
@@ -98,15 +107,88 @@ static int serve_job_get(h2o_handler_t* h, h2o_req_t* req) {
   return 0;
 }
 
+static void send_bad_request(h2o_req_t* req) {
+  h2o_generator_t gen = {NULL, NULL};
+  h2o_start_response(req, &gen);
+  req->res.status = 400;
+  req->res.reason = "Bad Request";
+  h2o_send(req, &req->entity, 1, 1);
+}
+
+static void send_ok_request(h2o_req_t* req) {
+  h2o_generator_t gen = {NULL, NULL};
+  h2o_start_response(req, &gen);
+  req->res.status = 200;
+  req->res.reason = "Ok";
+  h2o_send(req, &req->entity, 1, 1);
+}
+
 static int serve_job_post(h2o_handler_t* h, h2o_req_t* req) { return -1; }
+
+static int start_prerender(h2o_handler_t* h, h2o_req_t* req) {
+  if (req->entity.base == NULL) return -1;
+
+  char* body = (char*)calloc(req->entity.len + 1, 1);
+  memcpy(body, req->entity.base, req->entity.len);
+
+  JSON_Value* root = json_parse_string(body);
+  free(body);
+
+  if (root == NULL || json_value_get_type(root) != JSONObject) {
+    send_bad_request(req);
+    if (root) json_value_free(root);
+    return 0;
+  }
+
+  JSON_Object* req_json = json_value_get_object(root);
+
+  JSON_Array* coords_json = json_object_get_array(req_json, "coordinates");
+  double min_zoom = json_object_get_number(req_json, "minZoom");
+  double max_zoom = json_object_get_number(req_json, "maxZoom");
+
+  if (coords_json == NULL || min_zoom == 0.0 || max_zoom == 0.0) {
+    send_bad_request(req);
+    json_value_free(root);
+    return 0;
+  }
+
+  size_t num_coords = json_array_get_count(coords_json);
+
+  tl_prerender_req p = {
+    .min_zoom = min_zoom,
+    .max_zoom = max_zoom,
+    .coordinates = (vec2d*)calloc(num_coords, sizeof(vec2d)),
+    .num_coordinates = num_coords
+  };
+
+  for (int i = 0; i < num_coords; i++) {
+    JSON_Array* xy_json = json_array_get_array(coords_json, i);
+    if (xy_json) {
+      int coord_len = json_array_get_count(xy_json);
+      if (coord_len == 2) {
+        double x = json_array_get_number(xy_json, 0);
+        double y = json_array_get_number(xy_json, 1);
+        p.coordinates[i].x = x;
+        p.coordinates[i].y = y;
+      }
+    }
+  }
+
+  json_value_free(root);
+  free(p.coordinates);
+  send_ok_request(req);
+  return 0;
+}
 
 static int serve_job_request(h2o_handler_t* handler, h2o_req_t* req) {
   if (h2o_memis(req->method.base, req->method.len, H2O_STRLIT("GET"))) {
     return serve_job_get(handler, req);
   } else if (h2o_memis(req->method.base, req->method.len, H2O_STRLIT("POST"))) {
     return serve_job_post(handler, req);
+  } else if (h2o_memis(req->method.base, req->method.len, H2O_STRLIT("POST"))) {
+    return start_prerender(handler, req);
   }
-
+    
   return -1;
 }
 
@@ -231,6 +313,7 @@ int main(int argc, char** argv) {
       &conf.globalconf, h2o_iovec_init(H2O_STRLIT("default")), 65535);
   register_handler(hostconf, "/tile", serve_tile);
   register_handler(hostconf, "/jobs", serve_job_request);
+  register_handler(hostconf, "/prerender", start_prerender);
   h2o_file_register(h2o_config_register_path(hostconf, "/", 0), "ui", NULL,
                     NULL, 0);
 

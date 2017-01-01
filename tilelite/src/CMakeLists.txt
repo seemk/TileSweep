@@ -11,6 +11,7 @@ add_executable(tilelite
   tilelite.c
   hash/xxhash.c
   image_db.c
+  job_queue.c
   tl_options.c
   tl_time.c
   tl_tile.c
@@ -23,6 +24,11 @@ add_executable(tilelite
   json/parson.c
   sqlite3/sqlite3.c
   parg/parg.c
+)
+
+add_executable(tests
+  job_queue.c
+  test/tests.c
 )
 
 target_link_libraries(

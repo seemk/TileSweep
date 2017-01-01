@@ -1,4 +1,4 @@
-#include "renderpool.h"
+#include "taskpool.h"
 #include <semaphore.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -6,21 +6,21 @@
 
 typedef struct {
   int thread_num;
-  renderpool* pool; 
+  taskpool* pool; 
   pthread_t id;
   sem_t* sema;
 } pool_thread_info;
 
-int pool_queue_pop(pool_queue* q, job* j) {
+int pool_queue_pop(pool_queue* q, task* t) {
   pthread_mutex_lock(&q->lock);
-  int res = job_queue_pop(&q->queue, j);
+  int res = task_queue_pop(&q->queue, t);
   pthread_mutex_unlock(&q->lock);
   return res;
 }
 
-void pool_queue_push(pool_queue* q, job j) {
+void pool_queue_push(pool_queue* q, task t) {
   pthread_mutex_lock(&q->lock);
-  job_queue_push(&q->queue, j);
+  task_queue_push(&q->queue, t);
   pthread_mutex_unlock(&q->lock);
 }
 
@@ -30,9 +30,9 @@ static void* pool_task(void* arg) {
   for (;;) {
 
     int fetched = 0;
-    job j;
+    task t;
     for (int i = 0; i < info->pool->num_threads; i++) {
-      if (pool_queue_pop(&info->pool->high_prio_queues[i], &j)) {
+      if (pool_queue_pop(&info->pool->high_prio_queues[i], &t)) {
         fetched = 1;
         break;
       }
@@ -40,7 +40,7 @@ static void* pool_task(void* arg) {
 
     if (!fetched) {
       for (int i = 0; i < info->pool->num_threads; i++) {
-        if (pool_queue_pop(&info->pool->low_prio_queues[i], &j)) {
+        if (pool_queue_pop(&info->pool->low_prio_queues[i], &t)) {
           fetched = 1;
           break;
         }
@@ -48,6 +48,7 @@ static void* pool_task(void* arg) {
     }
 
     if (fetched) {
+      t.execute(&t);
     }
 
     sem_wait(info->sema);
@@ -56,8 +57,8 @@ static void* pool_task(void* arg) {
   tl_log("pool thread %d exiting", info->thread_num);
 }
 
-renderpool* renderpool_create(int threads) {
-  renderpool* pool = (renderpool*)calloc(1, sizeof(renderpool));
+taskpool* taskpool_create(int threads) {
+  taskpool* pool = (taskpool*)calloc(1, sizeof(taskpool));
   pool->num_threads = threads;
   pool->threads = calloc(threads, sizeof(pool_thread_info));
   pool->sema = calloc(1, sizeof(sem_t));
@@ -70,10 +71,10 @@ renderpool* renderpool_create(int threads) {
 
   pool_thread_info* pool_threads = (pool_thread_info*)pool->threads;
   for (int i = 0; i < threads; i++) {
-    job_queue_init(&pool->low_prio_queues[i].queue);
+    task_queue_init(&pool->low_prio_queues[i].queue);
     pthread_mutex_init(&pool->low_prio_queues[i].lock, NULL);
 
-    job_queue_init(&pool->high_prio_queues[i].queue);
+    task_queue_init(&pool->high_prio_queues[i].queue);
     pthread_mutex_init(&pool->high_prio_queues[i].lock, NULL);
 
     pool_thread_info* t = &pool_threads[i];
@@ -86,16 +87,13 @@ renderpool* renderpool_create(int threads) {
   return pool;
 }
 
-void renderpool_do(renderpool* pool, int task) {
+void taskpool_do(taskpool* pool, task t) {
   int queue_idx = atomic_fetch_add(&pool->insert_idx, 1) % pool->num_threads;
-
-  job j = {.id = task};
-  pool_queue_push(&pool->high_prio_queues[queue_idx], j);
-
+  pool_queue_push(&pool->high_prio_queues[queue_idx], t);
   sem_post(pool->sema);
 }
 
-void renderpool_destroy(renderpool* pool) {
+void taskpool_destroy(taskpool* pool) {
   pool_thread_info* pool_threads = (pool_thread_info*)pool->threads;
 
   for (int i = 0; i < pool->num_threads; i++) {

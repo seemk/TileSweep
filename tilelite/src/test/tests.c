@@ -1,32 +1,32 @@
 #include "minunit.h"
 #include <stdlib.h>
 #include <stdio.h>
-#include "../job_queue.h"
+#include "../task_queue.h"
 
-static char* job_queue_test() {
-  job_queue* q = job_queue_create();
+static char* task_queue_test() {
+  task_queue* q = task_queue_create();
  
-  job j;
-  mu_assert("empty pop", !job_queue_pop(q, &j));
+  task t;
+  mu_assert("empty pop", !task_queue_pop(q, &t));
 
-  int num_jobs = q->capacity + 100;
-  for (int i = 0; i < num_jobs; i++) {
-    job j1 = {.id = i};
-    job_queue_push(q, j1);
+  int num_tasks = q->capacity + 100;
+  for (int i = 0; i < num_tasks; i++) {
+    task j1 = {.id = i};
+    task_queue_push(q, j1);
   }
 
-  for (int i = 0; i < num_jobs; i++) {
-    int success = job_queue_pop(q, &j);
-    mu_assert("pop", success && j.id == i);
+  for (int i = 0; i < num_tasks; i++) {
+    int success = task_queue_pop(q, &t);
+    mu_assert("pop", success && t.id == i);
   }
 
-  mu_assert("pop after emptying", !job_queue_pop(q, &j));
+  mu_assert("pop after emptying", !task_queue_pop(q, &t));
 
   return NULL;
 }
 
 static char* all() {
-  mu_run_test(job_queue_test);
+  mu_run_test(task_queue_test);
   return NULL;
 }
 

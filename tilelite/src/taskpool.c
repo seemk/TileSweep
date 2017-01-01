@@ -18,10 +18,13 @@ int pool_queue_pop(pool_queue* q, task* t) {
   return res;
 }
 
-void pool_queue_push(pool_queue* q, task t) {
+int32_t pool_queue_push(pool_queue* q, task t) {
   pthread_mutex_lock(&q->lock);
   task_queue_push(&q->queue, t);
+  q->id_counter++;
+  int32_t id = q->id_counter;
   pthread_mutex_unlock(&q->lock);
+  return id;
 }
 
 static void* pool_task(void* arg) {
@@ -87,10 +90,11 @@ taskpool* taskpool_create(int threads) {
   return pool;
 }
 
-void taskpool_do(taskpool* pool, task t) {
+int32_t taskpool_do(taskpool* pool, task t) {
   int queue_idx = atomic_fetch_add(&pool->insert_idx, 1) % pool->num_threads;
-  pool_queue_push(&pool->high_prio_queues[queue_idx], t);
+  int32_t id = pool_queue_push(&pool->high_prio_queues[queue_idx], t);
   sem_post(pool->sema);
+  return id;
 }
 
 void taskpool_destroy(taskpool* pool) {

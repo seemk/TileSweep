@@ -196,6 +196,8 @@ static int serve_job_request(h2o_handler_t* handler, h2o_req_t* req) {
 
 static void* render_tile_handler(struct task* t) {
   tl_log("render tile handler called\n");
+  render_task* render = &t->as.ren_task;
+  render->success = render_tile(render->renderer, &render->tile, &render->img);
   return NULL;
 }
 

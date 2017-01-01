@@ -12,6 +12,7 @@ add_executable(tilelite
   hash/xxhash.c
   image_db.c
   job_queue.c
+  renderpool.c
   tl_options.c
   tl_time.c
   tl_tile.c
@@ -24,6 +25,7 @@ add_executable(tilelite
   json/parson.c
   sqlite3/sqlite3.c
   parg/parg.c
+  rng/pcg_basic.h
 )
 
 add_executable(tests

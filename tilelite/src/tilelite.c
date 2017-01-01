@@ -14,6 +14,7 @@
 #include "tl_write_queue.h"
 #include "json/parson.h"
 #include "cpu.h"
+#include "renderpool.h"
 
 typedef enum { res_ok, res_failure } tilelite_result;
 
@@ -32,6 +33,7 @@ typedef struct {
   size_t index;
   tl_write_queue* write_queue;
   int render_enabled;
+  renderpool* render_pool;
 } tilelite;
 
 static struct {
@@ -200,6 +202,8 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
   h2o_generator_t gen = {NULL, NULL};
   tl_tile t = parse_tile(req->path.base, req->path.len);
 
+  renderpool_do(tl->render_pool, 0);
+
   h2o_start_response(req, &gen);
 
   if (!tile_valid(&t) || (t.w != 256 && t.w != 512) ||
@@ -270,6 +274,10 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
   return 0;
 }
 
+void* background_worker(void* arg) {
+
+}
+
 void* run_loop(void* arg) {
   long idx = (long)arg;
 
@@ -322,6 +330,8 @@ int main(int argc, char** argv) {
     write_queue = tl_write_queue_create(image_db_open(opt.database));
   }
 
+  renderpool* render_pool = renderpool_create(conf.num_threads);
+
   int sock_fd = bind_tcp(opt.host, opt.port);
   if (sock_fd == -1) {
     tl_log("failed to bind socket");
@@ -333,6 +343,7 @@ int main(int argc, char** argv) {
     tl->db = image_db_open(opt.database);
     tl->write_queue = write_queue;
     tl->fd = sock_fd;
+    tl->render_pool = render_pool;
   }
 
   for (long i = 1; i < conf.num_threads; i++) {
@@ -341,6 +352,8 @@ int main(int argc, char** argv) {
   }
 
   run_loop(NULL);
+
+  renderpool_destroy(render_pool);
 
   return 0;
 }

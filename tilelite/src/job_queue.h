@@ -14,5 +14,6 @@ typedef struct {
 } job_queue;
 
 job_queue* job_queue_create();
+void job_queue_init(job_queue* q);
 void job_queue_push(job_queue* q, job j);
 int job_queue_pop(job_queue* q, job* j);

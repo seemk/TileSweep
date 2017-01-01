@@ -11,10 +11,14 @@ static int job_queue_full(const job_queue* q) {
 
 job_queue* job_queue_create() {
   job_queue* q = (job_queue*)calloc(1, sizeof(job_queue));
-  q->capacity = 32;
-  q->jobs = (job*)calloc(q->capacity, sizeof(job));
+  job_queue_init(q);
 
   return q;
+}
+
+void job_queue_init(job_queue* q) {
+  q->capacity = 32;
+  q->jobs = (job*)calloc(q->capacity, sizeof(job));
 }
 
 void job_queue_push(job_queue* q, job j) {

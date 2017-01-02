@@ -1,20 +1,15 @@
 #pragma once
-#include "tl_tile.h"
-#include "image.h"
 
-typedef struct task task;
+#include <stdint.h>
+#include <pthread.h>
 
 typedef struct {
-  tl_tile tile;
-  image img;
-  struct tile_renderer* renderer;
-  int success;
-} render_task;
-
-struct task {
   int32_t id;
-  void* (*execute)(task* t); 
-  union {
-    render_task ren_task;
-  } as;
-};
+  pthread_mutex_t lock;
+  pthread_cond_t cv;
+  void* (*execute)(void*); 
+  void* arg;
+} task;
+
+task* task_create(void* (*execute)(void*), void* arg);
+void task_destroy(task* t);

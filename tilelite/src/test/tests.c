@@ -6,18 +6,19 @@
 static char* task_queue_test() {
   task_queue* q = task_queue_create();
  
-  task t;
+  task* t;
   mu_assert("empty pop", !task_queue_pop(q, &t));
 
   int num_tasks = q->capacity + 100;
   for (int i = 0; i < num_tasks; i++) {
-    task j1 = {.id = i};
+    task* j1 = task_create(NULL, NULL);
+    j1->id = i;
     task_queue_push(q, j1);
   }
 
   for (int i = 0; i < num_tasks; i++) {
     int success = task_queue_pop(q, &t);
-    mu_assert("pop", success && t.id == i);
+    mu_assert("pop", success && t->id == i);
   }
 
   mu_assert("pop after emptying", !task_queue_pop(q, &t));

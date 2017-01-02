@@ -18,14 +18,14 @@ task_queue* task_queue_create() {
 
 void task_queue_init(task_queue* q) {
   q->capacity = 32;
-  q->tasks = (task*)calloc(q->capacity, sizeof(task));
+  q->tasks = (task**)calloc(q->capacity, sizeof(task*));
 }
 
-void task_queue_push(task_queue* q, task t) {
+void task_queue_push(task_queue* q, task* t) {
 
   if (task_queue_full(q)) {
     q->capacity = q->capacity * 1.5;
-    q->tasks = (task*)realloc(q->tasks, q->capacity * sizeof(task));
+    q->tasks = (task**)realloc(q->tasks, q->capacity * sizeof(task*));
   }
 
   const int32_t insert_idx = (q->start + q->length) % q->capacity;
@@ -33,7 +33,7 @@ void task_queue_push(task_queue* q, task t) {
   q->length++;
 }
 
-int task_queue_pop(task_queue* q, task* t) {
+int task_queue_pop(task_queue* q, task** t) {
   if (q->length > 0) {
     *t = q->tasks[q->start];
     q->start = (q->start + 1) % q->capacity;

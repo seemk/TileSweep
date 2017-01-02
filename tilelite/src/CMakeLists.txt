@@ -11,6 +11,7 @@ add_executable(tilelite
   tilelite.c
   hash/xxhash.c
   image_db.c
+  task.c
   task_queue.c
   taskpool.c
   tl_options.c
@@ -29,6 +30,7 @@ add_executable(tilelite
 )
 
 add_executable(tests
+  task.c
   task_queue.c
   test/tests.c
 )

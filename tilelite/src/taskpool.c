@@ -11,20 +11,17 @@ typedef struct {
   sem_t* sema;
 } pool_thread_info;
 
-int pool_queue_pop(pool_queue* q, task* t) {
+int pool_queue_pop(pool_queue* q, task** t) {
   pthread_mutex_lock(&q->lock);
   int res = task_queue_pop(&q->queue, t);
   pthread_mutex_unlock(&q->lock);
   return res;
 }
 
-int32_t pool_queue_push(pool_queue* q, task t) {
+void pool_queue_push(pool_queue* q, task* t) {
   pthread_mutex_lock(&q->lock);
   task_queue_push(&q->queue, t);
-  q->id_counter++;
-  int32_t id = q->id_counter;
   pthread_mutex_unlock(&q->lock);
-  return id;
 }
 
 static void* pool_task(void* arg) {
@@ -32,26 +29,26 @@ static void* pool_task(void* arg) {
 
   for (;;) {
 
-    int fetched = 0;
-    task t;
+    task* t = NULL;
     for (int i = 0; i < info->pool->num_threads; i++) {
       if (pool_queue_pop(&info->pool->high_prio_queues[i], &t)) {
-        fetched = 1;
         break;
       }
     }
 
-    if (!fetched) {
+    if (!t) {
       for (int i = 0; i < info->pool->num_threads; i++) {
         if (pool_queue_pop(&info->pool->low_prio_queues[i], &t)) {
-          fetched = 1;
           break;
         }
       }
     }
 
-    if (fetched) {
-      t.execute(&t);
+    if (t) {
+      pthread_mutex_lock(&t->lock);
+      t->execute(t->arg);
+      pthread_cond_signal(&t->cv);
+      pthread_mutex_unlock(&t->lock);
     }
 
     sem_wait(info->sema);
@@ -90,11 +87,12 @@ taskpool* taskpool_create(int threads) {
   return pool;
 }
 
-int32_t taskpool_do(taskpool* pool, task t) {
+void taskpool_do(taskpool* pool, task* t) {
   int queue_idx = atomic_fetch_add(&pool->insert_idx, 1) % pool->num_threads;
-  int32_t id = pool_queue_push(&pool->high_prio_queues[queue_idx], t);
+  pool_queue_push(&pool->high_prio_queues[queue_idx], t);
+  pthread_mutex_lock(&t->lock);
   sem_post(pool->sema);
-  return id;
+  pthread_cond_wait(&t->cv, &t->lock);
 }
 
 void taskpool_destroy(taskpool* pool) {

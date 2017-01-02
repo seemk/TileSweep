@@ -1,20 +1,20 @@
 #include <fcntl.h>
 #include <h2o.h>
 #include <signal.h>
+#include "cpu.h"
 #include "hash/xxhash.h"
 #include "image.h"
 #include "image_db.h"
+#include "json/parson.h"
+#include "taskpool.h"
 #include "tcp.h"
 #include "tile_renderer.h"
 #include "tl_log.h"
+#include "tl_math.h"
 #include "tl_options.h"
 #include "tl_tile.h"
 #include "tl_time.h"
-#include "tl_math.h"
 #include "tl_write_queue.h"
-#include "json/parson.h"
-#include "cpu.h"
-#include "taskpool.h"
 
 typedef enum { res_ok, res_failure } tilelite_result;
 
@@ -22,6 +22,13 @@ typedef struct {
   h2o_context_t super;
   void* user;
 } tl_h2o_ctx;
+
+typedef struct {
+  tl_tile tile;
+  image* img;
+  struct tile_renderer* renderer;
+  int success;
+} tile_render_task;
 
 typedef struct {
   h2o_accept_ctx_t accept_ctx;
@@ -102,7 +109,6 @@ static h2o_pathconf_t* register_handler(h2o_hostconf_t* conf, const char* path,
 }
 
 static int serve_job_get(h2o_handler_t* h, h2o_req_t* req) {
-  printf("jobs get\n");
   tl_h2o_ctx* h2o = (tl_h2o_ctx*)req->conn->ctx;
   tilelite* tl = (tilelite*)h2o->user;
   h2o_generator_t gen = {NULL, NULL};
@@ -157,11 +163,10 @@ static int start_prerender(h2o_handler_t* h, h2o_req_t* req) {
   size_t num_coords = json_array_get_count(coords_json);
 
   tl_prerender_req p = {
-    .min_zoom = min_zoom,
-    .max_zoom = max_zoom,
-    .coordinates = (vec2d*)calloc(num_coords, sizeof(vec2d)),
-    .num_coordinates = num_coords
-  };
+      .min_zoom = min_zoom,
+      .max_zoom = max_zoom,
+      .coordinates = (vec2d*)calloc(num_coords, sizeof(vec2d)),
+      .num_coordinates = num_coords};
 
   for (int i = 0; i < num_coords; i++) {
     JSON_Array* xy_json = json_array_get_array(coords_json, i);
@@ -190,14 +195,13 @@ static int serve_job_request(h2o_handler_t* handler, h2o_req_t* req) {
   } else if (h2o_memis(req->method.base, req->method.len, H2O_STRLIT("POST"))) {
     return start_prerender(handler, req);
   }
-    
+
   return -1;
 }
 
-static void* render_tile_handler(struct task* t) {
-  tl_log("render tile handler called\n");
-  render_task* render = &t->as.ren_task;
-  render->success = render_tile(render->renderer, &render->tile, &render->img);
+static void* render_tile_handler(void* arg) {
+  tile_render_task* task = (tile_render_task*)arg;
+  task->success = render_tile(task->renderer, &task->tile, task->img);
   return NULL;
 }
 
@@ -211,7 +215,6 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
 
   h2o_start_response(req, &gen);
 
-
   if (!tile_valid(&t) || (t.w != 256 && t.w != 512) ||
       (t.h != 256 && t.h != 512)) {
     req->res.status = 400;
@@ -223,23 +226,17 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
   uint64_t pos_hash = tile_hash(&t);
   image img = {.width = 0, .height = 0, .len = 0, .data = NULL};
 
-  render_task ren_task = {
-    .tile = t,
-    .img = img,
-    .renderer = tl->renderer
-  };
-
-  task dummy_task = {
-    .execute = render_tile_handler,
-    .as = ren_task
-  };
-
-  taskpool_do(tl->render_pool, dummy_task);
-
   tilelite_result result = res_ok;
   int32_t existing = image_db_fetch(tl->db, pos_hash, t.w, t.h, &img);
   if (tl->render_enabled && !existing) {
-    if (render_tile(tl->renderer, &t, &img)) {
+    tile_render_task renderer_info = {
+        .tile = t, .img = &img, .renderer = tl->renderer, .success = 0};
+
+    task* render_task = task_create(render_tile_handler, &renderer_info);
+    taskpool_do(tl->render_pool, render_task);
+    task_destroy(render_task);
+
+    if (renderer_info.success) {
       uint64_t image_hash = XXH64(img.data, img.len, 0);
 
       image write_img;
@@ -293,9 +290,7 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
   return 0;
 }
 
-void* background_worker(void* arg) {
-
-}
+void* background_worker(void* arg) {}
 
 void* run_loop(void* arg) {
   long idx = (long)arg;

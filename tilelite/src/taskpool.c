@@ -1,12 +1,12 @@
 #include "taskpool.h"
 #include <semaphore.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "tl_log.h"
 
 typedef struct {
   int thread_num;
-  taskpool* pool; 
+  taskpool* pool;
   pthread_t id;
   sem_t* sema;
 } pool_thread_info;
@@ -28,7 +28,6 @@ static void* pool_task(void* arg) {
   pool_thread_info* info = (pool_thread_info*)arg;
 
   for (;;) {
-
     task* t = NULL;
     for (int i = 0; i < info->pool->num_threads; i++) {
       if (pool_queue_pop(&info->pool->high_prio_queues[i], &t)) {
@@ -45,16 +44,21 @@ static void* pool_task(void* arg) {
     }
 
     if (t) {
+#ifdef DEBUG
+      int64_t start_time = tl_usec_now();
+#endif
       pthread_mutex_lock(&t->lock);
       t->execute(t->arg);
       pthread_cond_signal(&t->cv);
       pthread_mutex_unlock(&t->lock);
+#ifdef DEBUG
+      tl_log("[pool-%d] task exec: %.3f ms", info->thread_num,
+             (tl_usec_now() - start_time) / 1000.0);
+#endif
     }
 
     sem_wait(info->sema);
   }
-
-  tl_log("pool thread %d exiting", info->thread_num);
 }
 
 taskpool* taskpool_create(int threads) {
@@ -87,9 +91,11 @@ taskpool* taskpool_create(int threads) {
   return pool;
 }
 
-void taskpool_do(taskpool* pool, task* t) {
+void taskpool_do(taskpool* pool, task* t, task_priority priority) {
   int queue_idx = atomic_fetch_add(&pool->insert_idx, 1) % pool->num_threads;
-  pool_queue_push(&pool->high_prio_queues[queue_idx], t);
+  pool_queue* q = priority == TP_HIGH ? &pool->high_prio_queues[queue_idx]
+                                      : &pool->low_prio_queues[queue_idx];
+  pool_queue_push(q, t);
   pthread_mutex_lock(&t->lock);
   sem_post(pool->sema);
   pthread_cond_wait(&t->cv, &t->lock);

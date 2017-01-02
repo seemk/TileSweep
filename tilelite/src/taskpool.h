@@ -4,6 +4,11 @@
 #include <stdatomic.h>
 #include "task.h"
 
+typedef enum {
+  TP_LOW,
+  TP_HIGH
+} task_priority;
+
 typedef struct {
   task_queue queue;
   pthread_mutex_t lock;
@@ -19,5 +24,5 @@ typedef struct {
 } taskpool;
 
 taskpool* taskpool_create(int threads);
-void taskpool_do(taskpool* pool, task* t);
+void taskpool_do(taskpool* pool, task* t, task_priority priority);
 void taskpool_destroy(taskpool* pool);

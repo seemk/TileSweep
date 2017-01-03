@@ -22,6 +22,8 @@ add_executable(tilelite
   tl_write_queue.cpp
   tile_renderer.cpp
 
+  poly_hit_test.c
+
   ini/ini.c
   json/parson.c
   sqlite3/sqlite3.c
@@ -30,6 +32,7 @@ add_executable(tilelite
 )
 
 add_executable(tests
+  poly_hit_test.c
   task.c
   task_queue.c
   test/tests.c

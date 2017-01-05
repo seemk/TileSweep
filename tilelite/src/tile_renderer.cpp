@@ -48,13 +48,11 @@ int32_t render_tile(tile_renderer* renderer, const tl_tile* tile,
                     image* image) {
   vec3d p1_xyz{double(tile->x), double(tile->y), double(tile->z)};
   vec3d p2_xyz{double(tile->x + 1), double(tile->y + 1), double(tile->z)};
-  vec2d p1 = xyz_to_latlon(p1_xyz);
-  vec2d p2 = xyz_to_latlon(p2_xyz);
 
-  mapnik::lonlat2merc(&p1.x, &p1.y, 1);
-  mapnik::lonlat2merc(&p2.x, &p2.y, 1);
+  bounding_boxd merc_bb = tile_to_mercator(tile->x, tile->y, tile->z, tile->w);
 
-  mapnik::box2d<double> bbox(p1.x, p1.y, p2.x, p2.y);
+  mapnik::box2d<double> bbox(merc_bb.top_left.x, merc_bb.top_left.y,
+                             merc_bb.bot_right.x, merc_bb.bot_right.y);
 
   renderer->map->resize(tile->w, tile->h);
   renderer->map->zoom_to_box(bbox);

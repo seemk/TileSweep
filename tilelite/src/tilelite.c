@@ -1,3 +1,4 @@
+#include "tilelite.h"
 #include <fcntl.h>
 #include <h2o.h>
 #include <signal.h>
@@ -52,10 +53,11 @@ static struct {
 } conf;
 
 typedef struct {
-  double min_zoom;
-  double max_zoom;
+  int32_t min_zoom;
+  int32_t max_zoom;
   vec2d* coordinates;
   size_t num_coordinates;
+  int32_t tile_size;
 } tl_prerender_req;
 
 static void on_accept(h2o_socket_t* listener, const char* err) {
@@ -131,6 +133,13 @@ static void send_ok_request(h2o_req_t* req) {
   h2o_send(req, &req->entity, 1, 1);
 }
 
+static void* setup_prerender(void* arg) {
+  tl_prerender_req* req = (tl_prerender_req*)arg;
+  tl_log("setting up prerender. min_zoom: %d, max_zoom %d, tile_size: %d",
+         req->min_zoom, req->max_zoom, req->tile_size);
+  return NULL;
+}
+
 static int serve_job_post(h2o_handler_t* h, h2o_req_t* req) { return -1; }
 
 static int start_prerender(h2o_handler_t* h, h2o_req_t* req) {
@@ -151,10 +160,16 @@ static int start_prerender(h2o_handler_t* h, h2o_req_t* req) {
   JSON_Object* req_json = json_value_get_object(root);
 
   JSON_Array* coords_json = json_object_get_array(req_json, "coordinates");
-  double min_zoom = json_object_get_number(req_json, "minZoom");
-  double max_zoom = json_object_get_number(req_json, "maxZoom");
+  int32_t min_zoom = (int32_t)json_object_get_number(req_json, "minZoom");
+  int32_t max_zoom = (int32_t)json_object_get_number(req_json, "maxZoom");
+  int32_t tile_size = (int32_t)json_object_get_number(req_json, "tileSize");
 
-  if (coords_json == NULL || min_zoom == 0.0 || max_zoom == 0.0) {
+  if (tile_size != 256 || tile_size != 512) {
+    tile_size = 256;
+  }
+
+  if (coords_json == NULL || min_zoom == 0.0 || max_zoom == 0.0 ||
+      min_zoom > MAX_ZOOM_LEVEL || max_zoom > MAX_ZOOM_LEVEL) {
     send_bad_request(req);
     json_value_free(root);
     return 0;
@@ -162,11 +177,13 @@ static int start_prerender(h2o_handler_t* h, h2o_req_t* req) {
 
   size_t num_coords = json_array_get_count(coords_json);
 
-  tl_prerender_req p = {
-      .min_zoom = min_zoom,
-      .max_zoom = max_zoom,
-      .coordinates = (vec2d*)calloc(num_coords, sizeof(vec2d)),
-      .num_coordinates = num_coords};
+  tl_prerender_req* prerender_req =
+      (tl_prerender_req*)calloc(1, sizeof(tl_prerender_req));
+  prerender_req->min_zoom = min_zoom;
+  prerender_req->max_zoom = max_zoom;
+  prerender_req->coordinates = (vec2d*)calloc(num_coords, sizeof(vec2d));
+  prerender_req->num_coordinates = num_coords;
+  prerender_req->tile_size = tile_size;
 
   for (int i = 0; i < num_coords; i++) {
     JSON_Array* xy_json = json_array_get_array(coords_json, i);
@@ -175,14 +192,21 @@ static int start_prerender(h2o_handler_t* h, h2o_req_t* req) {
       if (coord_len == 2) {
         double x = json_array_get_number(xy_json, 0);
         double y = json_array_get_number(xy_json, 1);
-        p.coordinates[i].x = x;
-        p.coordinates[i].y = y;
+        prerender_req->coordinates[i].x = x;
+        prerender_req->coordinates[i].y = y;
       }
     }
   }
 
   json_value_free(root);
-  free(p.coordinates);
+
+  tl_h2o_ctx* h2o = (tl_h2o_ctx*)req->conn->ctx;
+  tilelite* tl = (tilelite*)h2o->user;
+
+  task* setup_prerender_task = task_create(setup_prerender, prerender_req);
+  setup_prerender_task->cleanup = task_default_cleanup;
+  taskpool_post(tl->render_pool, setup_prerender_task, TP_LOW);
+
   send_ok_request(req);
   return 0;
 }

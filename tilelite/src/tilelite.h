@@ -1,3 +1,3 @@
 #pragma once
 
-const int MAX_ZOOM_LEVEL = 18;
+#define MAX_ZOOM_LEVEL 18

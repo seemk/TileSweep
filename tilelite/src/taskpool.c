@@ -24,6 +24,13 @@ void pool_queue_push(pool_queue* q, task* t) {
   pthread_mutex_unlock(&q->lock);
 }
 
+static void pool_add_task(taskpool* pool, task* t, task_priority priority) {
+  int queue_idx = atomic_fetch_add(&pool->insert_idx, 1) % pool->num_threads;
+  pool_queue* q = priority == TP_HIGH ? &pool->high_prio_queues[queue_idx]
+                                      : &pool->low_prio_queues[queue_idx];
+  pool_queue_push(q, t);
+}
+
 static void* pool_task(void* arg) {
   pool_thread_info* info = (pool_thread_info*)arg;
 
@@ -91,14 +98,16 @@ taskpool* taskpool_create(int threads) {
   return pool;
 }
 
-void taskpool_do(taskpool* pool, task* t, task_priority priority) {
-  int queue_idx = atomic_fetch_add(&pool->insert_idx, 1) % pool->num_threads;
-  pool_queue* q = priority == TP_HIGH ? &pool->high_prio_queues[queue_idx]
-                                      : &pool->low_prio_queues[queue_idx];
-  pool_queue_push(q, t);
+void taskpool_wait(taskpool* pool, task* t, task_priority priority) {
+  pool_add_task(pool, t, priority);
   pthread_mutex_lock(&t->lock);
   sem_post(pool->sema);
   pthread_cond_wait(&t->cv, &t->lock);
+}
+
+void taskpool_post(taskpool* pool, task* t, task_priority priority) {
+  pool_add_task(pool, t, priority);
+  sem_post(pool->sema);
 }
 
 void taskpool_destroy(taskpool* pool) {

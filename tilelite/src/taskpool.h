@@ -1,13 +1,10 @@
 #pragma once
-#include "task_queue.h"
 #include <pthread.h>
 #include <stdatomic.h>
 #include "task.h"
+#include "task_queue.h"
 
-typedef enum {
-  TP_LOW,
-  TP_HIGH
-} task_priority;
+typedef enum { TP_LOW, TP_HIGH } task_priority;
 
 typedef struct {
   task_queue queue;
@@ -24,5 +21,6 @@ typedef struct {
 } taskpool;
 
 taskpool* taskpool_create(int threads);
-void taskpool_do(taskpool* pool, task* t, task_priority priority);
+void taskpool_wait(taskpool* pool, task* t, task_priority priority);
+void taskpool_post(taskpool* pool, task* t, task_priority priority);
 void taskpool_destroy(taskpool* pool);

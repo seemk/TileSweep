@@ -233,7 +233,7 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
         .tile = t, .img = &img, .renderer = tl->renderer, .success = 0};
 
     task* render_task = task_create(render_tile_handler, &renderer_info);
-    taskpool_do(tl->render_pool, render_task, TP_HIGH);
+    taskpool_wait(tl->render_pool, render_task, TP_HIGH);
     task_destroy(render_task);
 
     if (renderer_info.success) {

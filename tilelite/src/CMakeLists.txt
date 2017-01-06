@@ -28,7 +28,8 @@ add_executable(tilelite
   json/parson.c
   sqlite3/sqlite3.c
   parg/parg.c
-  rng/pcg_basic.h
+  prerender.c
+  renderjob_db.c
 )
 
 add_executable(tests

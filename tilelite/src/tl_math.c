@@ -6,7 +6,7 @@
 #define MERCATOR_SHIFT_ORIGIN 20037508.342789244
 
 static inline double resolution(double zoom, double tile_size) {
-  return (2.0 * PI * EARTH_RADIUS / tile_size) * exp2(zoom);
+  return (2.0 * PI * EARTH_RADIUS) / (tile_size * exp2(zoom));
 }
 
 static inline vec2d pixel_to_meter(double x, double y, double zoom,
@@ -22,7 +22,7 @@ vec2i mercator_to_tile(double x, double y, int32_t zoom, int32_t tile_size) {
   const double reso = resolution(zoom, size);
 
   const double px = (x + MERCATOR_SHIFT_ORIGIN) / reso;
-  const double py = (y + MERCATOR_SHIFT_ORIGIN) / reso;
+  const double py = (-y + MERCATOR_SHIFT_ORIGIN) / reso;
 
   return (vec2i){.x = (int32_t)ceil(px / size) - 1,
                  .y = (int32_t)ceil(py / size) - 1};

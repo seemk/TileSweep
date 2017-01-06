@@ -15,7 +15,7 @@ typedef struct {
   vec2i* tile_coordinates;
 } collision_check_job;
 
-collision_check_job* make_collision_check_jobs(
+collision_check_job** make_collision_check_jobs(
     const vec2d* coordinates, int32_t num_coordinates, int32_t min_zoom,
     int32_t max_zoom, int32_t tile_size, int32_t job_check_limit);
 vec2i* calc_tiles(const collision_check_job* job);

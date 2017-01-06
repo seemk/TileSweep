@@ -58,6 +58,10 @@ static void* pool_task(void* arg) {
       t->execute(t->arg);
       pthread_cond_signal(&t->cv);
       pthread_mutex_unlock(&t->lock);
+      if (t->cleanup) {
+        t->cleanup(t->arg);
+        task_destroy(t);
+      }
 #ifdef DEBUG
       tl_log("[pool-%d] task exec: %.3f ms", info->thread_num,
              (tl_usec_now() - start_time) / 1000.0);

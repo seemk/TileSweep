@@ -16,3 +16,7 @@ void task_destroy(task* t) {
   pthread_cond_destroy(&t->cv);
   free(t);
 }
+
+void task_default_cleanup(void* arg) {
+  free(arg);
+}

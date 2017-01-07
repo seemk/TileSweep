@@ -135,7 +135,18 @@ static void send_server_error(h2o_req_t* req) {
   h2o_send(req, &req->entity, 1, 1);
 }
 
-static void* calculate_tiles(void* arg) { return NULL; }
+static void* calculate_tiles(void* arg) {
+  collision_check_job* job = (collision_check_job*)arg;
+  vec2i* tiles = calc_tiles(job);
+  tl_log("tile calc (%d %d, %d %d) job finished; tile count: %d", job->x_start,
+         job->y_start, job->x_end, job->y_end, sb_count(tiles));
+
+
+  sb_free(tiles);
+  free(job->tile_coordinates);
+  free(job);
+  return NULL;
+}
 
 static void* setup_prerender(void* arg) {
   prerender_req* req = (prerender_req*)arg;
@@ -146,17 +157,21 @@ static void* setup_prerender(void* arg) {
       req->coordinates, req->num_coordinates, req->min_zoom, req->max_zoom,
       req->tile_size, 4096);
 
+  tl_log("num jobs: %d", sb_count(jobs));
   for (int j = 0; j < sb_count(jobs); j++) {
     collision_check_job* job = jobs[j];
-    tl_log("%d %d -> %d %d", job->x_start, job->y_start, job->x_end,
+    job->id = req->id;
+    tl_log("%p %d %d -> %d %d", job, job->x_start, job->y_start, job->x_end,
            job->y_end);
 
     task* tiles_task = task_create(calculate_tiles, job);
-    tiles_task->cleanup = task_default_cleanup;
     taskpool_post((taskpool*)req->user, tiles_task, TP_LOW);
   }
 
   sb_free(jobs);
+  free(req->coordinates);
+  free(req);
+
   return NULL;
 }
 
@@ -238,7 +253,6 @@ static int start_prerender(h2o_handler_t* h, h2o_req_t* req) {
   tl_log("new prerender task (%ld)", prerender->id);
 
   task* setup_prerender_task = task_create(setup_prerender, prerender);
-  setup_prerender_task->cleanup = task_default_cleanup;
   taskpool_post(tl->task_pool, setup_prerender_task, TP_LOW);
 
   send_ok_request(req);

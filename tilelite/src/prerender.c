@@ -132,6 +132,7 @@ vec2i* calc_tiles(const collision_check_job* job) {
       }
     }
   }
+
   poly_hit_test_destroy(&test_ctx);
 
   return tiles;

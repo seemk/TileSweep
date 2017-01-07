@@ -6,6 +6,7 @@
 typedef struct {
   vec2i top_left;
   vec2i bot_right;
+  int32_t id;
   int32_t tile_size;
   int32_t x_start;
   int32_t y_start;

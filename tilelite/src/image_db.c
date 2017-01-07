@@ -15,14 +15,7 @@ image_db* image_db_open(const char* db_file) {
   }
 
   char* err_msg = NULL;
-
-  res =
-      sqlite3_exec(sqlite_db, "PRAGMA journal_mode=WAL", NULL, NULL, &err_msg);
-
-  if (res != SQLITE_OK) {
-    tl_log("image_db: failued to set journal mode: %s", err_msg);
-    return NULL;
-  }
+  sqlite3_exec(sqlite_db, "PRAGMA journal_mode=WAL", NULL, NULL, &err_msg);
 
   res = sqlite3_exec(
       sqlite_db,

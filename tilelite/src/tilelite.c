@@ -7,6 +7,8 @@
 #include "image.h"
 #include "image_db.h"
 #include "json/parson.h"
+#include "prerender_db.h"
+#include "stretchy_buffer.h"
 #include "taskpool.h"
 #include "tcp.h"
 #include "tile_renderer.h"
@@ -41,7 +43,7 @@ typedef struct {
   size_t index;
   tl_write_queue* write_queue;
   int render_enabled;
-  taskpool* render_pool;
+  taskpool* task_pool;
 } tilelite;
 
 static struct {
@@ -51,14 +53,6 @@ static struct {
   tilelite* threads;
   int rendering;
 } conf;
-
-typedef struct {
-  int32_t min_zoom;
-  int32_t max_zoom;
-  vec2d* coordinates;
-  size_t num_coordinates;
-  int32_t tile_size;
-} tl_prerender_req;
 
 static void on_accept(h2o_socket_t* listener, const char* err) {
   if (err != NULL) {
@@ -133,10 +127,36 @@ static void send_ok_request(h2o_req_t* req) {
   h2o_send(req, &req->entity, 1, 1);
 }
 
+static void send_server_error(h2o_req_t* req) {
+  h2o_generator_t gen = {NULL, NULL};
+  h2o_start_response(req, &gen);
+  req->res.status = 500;
+  req->res.reason = "Internal Server Error";
+  h2o_send(req, &req->entity, 1, 1);
+}
+
+static void* calculate_tiles(void* arg) { return NULL; }
+
 static void* setup_prerender(void* arg) {
-  tl_prerender_req* req = (tl_prerender_req*)arg;
+  prerender_req* req = (prerender_req*)arg;
   tl_log("setting up prerender. min_zoom: %d, max_zoom %d, tile_size: %d",
          req->min_zoom, req->max_zoom, req->tile_size);
+
+  collision_check_job** jobs = make_collision_check_jobs(
+      req->coordinates, req->num_coordinates, req->min_zoom, req->max_zoom,
+      req->tile_size, 4096);
+
+  for (int j = 0; j < sb_count(jobs); j++) {
+    collision_check_job* job = jobs[j];
+    tl_log("%d %d -> %d %d", job->x_start, job->y_start, job->x_end,
+           job->y_end);
+
+    task* tiles_task = task_create(calculate_tiles, job);
+    tiles_task->cleanup = task_default_cleanup;
+    taskpool_post((taskpool*)req->user, tiles_task, TP_LOW);
+  }
+
+  sb_free(jobs);
   return NULL;
 }
 
@@ -177,13 +197,16 @@ static int start_prerender(h2o_handler_t* h, h2o_req_t* req) {
 
   size_t num_coords = json_array_get_count(coords_json);
 
-  tl_prerender_req* prerender_req =
-      (tl_prerender_req*)calloc(1, sizeof(tl_prerender_req));
-  prerender_req->min_zoom = min_zoom;
-  prerender_req->max_zoom = max_zoom;
-  prerender_req->coordinates = (vec2d*)calloc(num_coords, sizeof(vec2d));
-  prerender_req->num_coordinates = num_coords;
-  prerender_req->tile_size = tile_size;
+  tl_h2o_ctx* h2o = (tl_h2o_ctx*)req->conn->ctx;
+  tilelite* tl = (tilelite*)h2o->user;
+
+  prerender_req* prerender = (prerender_req*)calloc(1, sizeof(prerender_req));
+  prerender->min_zoom = min_zoom;
+  prerender->max_zoom = max_zoom;
+  prerender->coordinates = (vec2d*)calloc(num_coords, sizeof(vec2d));
+  prerender->num_coordinates = num_coords;
+  prerender->tile_size = tile_size;
+  prerender->user = tl->task_pool;
 
   for (int i = 0; i < num_coords; i++) {
     JSON_Array* xy_json = json_array_get_array(coords_json, i);
@@ -192,20 +215,31 @@ static int start_prerender(h2o_handler_t* h, h2o_req_t* req) {
       if (coord_len == 2) {
         double x = json_array_get_number(xy_json, 0);
         double y = json_array_get_number(xy_json, 1);
-        prerender_req->coordinates[i].x = x;
-        prerender_req->coordinates[i].y = y;
+        prerender->coordinates[i].x = x;
+        prerender->coordinates[i].y = y;
       }
     }
   }
 
   json_value_free(root);
 
-  tl_h2o_ctx* h2o = (tl_h2o_ctx*)req->conn->ctx;
-  tilelite* tl = (tilelite*)h2o->user;
+  prerender_db* db = prerender_db_open(STATUS_DB);
+  prerender->id = prerender_db_add_job(db, prerender);
+  prerender_db_close(db);
 
-  task* setup_prerender_task = task_create(setup_prerender, prerender_req);
+  if (prerender->id < 1) {
+    tl_log("failed to create prerender task");
+    free(prerender->coordinates);
+    free(prerender);
+    send_server_error(req);
+    return 0;
+  }
+
+  tl_log("new prerender task (%ld)", prerender->id);
+
+  task* setup_prerender_task = task_create(setup_prerender, prerender);
   setup_prerender_task->cleanup = task_default_cleanup;
-  taskpool_post(tl->render_pool, setup_prerender_task, TP_LOW);
+  taskpool_post(tl->task_pool, setup_prerender_task, TP_LOW);
 
   send_ok_request(req);
   return 0;
@@ -257,7 +291,7 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
         .tile = t, .img = &img, .renderer = tl->renderer, .success = 0};
 
     task* render_task = task_create(render_tile_handler, &renderer_info);
-    taskpool_wait(tl->render_pool, render_task, TP_HIGH);
+    taskpool_wait(tl->task_pool, render_task, TP_HIGH);
     task_destroy(render_task);
 
     if (renderer_info.success) {
@@ -368,7 +402,7 @@ int main(int argc, char** argv) {
     write_queue = tl_write_queue_create(image_db_open(opt.database));
   }
 
-  taskpool* render_pool = taskpool_create(conf.num_threads);
+  taskpool* task_pool = taskpool_create(conf.num_threads);
 
   int sock_fd = bind_tcp(opt.host, opt.port);
   if (sock_fd == -1) {
@@ -381,7 +415,7 @@ int main(int argc, char** argv) {
     tl->db = image_db_open(opt.database);
     tl->write_queue = write_queue;
     tl->fd = sock_fd;
-    tl->render_pool = render_pool;
+    tl->task_pool = task_pool;
   }
 
   for (long i = 1; i < conf.num_threads; i++) {
@@ -391,7 +425,7 @@ int main(int argc, char** argv) {
 
   run_loop(NULL);
 
-  taskpool_destroy(render_pool);
+  taskpool_destroy(task_pool);
 
   return 0;
 }

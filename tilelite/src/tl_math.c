@@ -32,9 +32,10 @@ bounding_boxd tile_to_mercator(int32_t x, int32_t y, int32_t z,
                                int32_t tile_size) {
   const double zoom = (double)z;
   const double size = (double)tile_size;
-  const vec2d top_left =
-      pixel_to_meter(x * tile_size, y * tile_size, zoom, size);
+  const double tx = (double)x;
+  const double ty = (double)((1 << z) - y - 1);
+  const vec2d top_left = pixel_to_meter(tx * size, ty * size, zoom, size);
   const vec2d bot_right =
-      pixel_to_meter((x + 1) * tile_size, (y + 1) * tile_size, zoom, size);
+      pixel_to_meter((tx + 1.0) * size, (ty + 1.0) * size, zoom, size);
   return (bounding_boxd){.top_left = top_left, .bot_right = bot_right};
 }

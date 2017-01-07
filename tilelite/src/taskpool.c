@@ -1,4 +1,5 @@
 #include "taskpool.h"
+#include <assert.h>
 #include <semaphore.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,10 +26,22 @@ void pool_queue_push(pool_queue* q, task* t) {
 }
 
 static void pool_add_task(taskpool* pool, task* t, task_priority priority) {
+  assert(priority >= 0 && priority < TP_COUNT);
   int queue_idx = atomic_fetch_add(&pool->insert_idx, 1) % pool->num_threads;
-  pool_queue* q = priority == TP_HIGH ? &pool->high_prio_queues[queue_idx]
-                                      : &pool->low_prio_queues[queue_idx];
+  pool_queue* q = &pool->queues[priority][queue_idx];
   pool_queue_push(q, t);
+}
+
+static int32_t get_task(taskpool* pool, task** t) {
+  for (int32_t p = TP_HIGH; p <= TP_LOW; p++) {
+    for (int i = 0; i < pool->num_threads; i++) {
+      if (pool_queue_pop(&pool->queues[p][i], t)) {
+        return 1;
+      }
+    }
+  }
+
+  return 0;
 }
 
 static void* pool_task(void* arg) {
@@ -36,21 +49,8 @@ static void* pool_task(void* arg) {
 
   for (;;) {
     task* t = NULL;
-    for (int i = 0; i < info->pool->num_threads; i++) {
-      if (pool_queue_pop(&info->pool->high_prio_queues[i], &t)) {
-        break;
-      }
-    }
 
-    if (!t) {
-      for (int i = 0; i < info->pool->num_threads; i++) {
-        if (pool_queue_pop(&info->pool->low_prio_queues[i], &t)) {
-          break;
-        }
-      }
-    }
-
-    if (t) {
+    if (get_task(info->pool, &t)) {
 #ifdef DEBUG
       int64_t start_time = tl_usec_now();
 #endif
@@ -72,26 +72,27 @@ static void* pool_task(void* arg) {
   }
 }
 
-taskpool* taskpool_create(int threads) {
+taskpool* taskpool_create(int32_t threads) {
   taskpool* pool = (taskpool*)calloc(1, sizeof(taskpool));
   pool->num_threads = threads;
   pool->threads = calloc(threads, sizeof(pool_thread_info));
   pool->sema = calloc(1, sizeof(sem_t));
-  pool->low_prio_queues = (pool_queue*)calloc(threads, sizeof(pool_queue));
-  pool->high_prio_queues = (pool_queue*)calloc(threads, sizeof(pool_queue));
 
   atomic_init(&pool->insert_idx, 0);
-
   sem_init(pool->sema, 0, 0);
 
+  for (int32_t p = TP_HIGH; p < TP_COUNT; p++) {
+    pool->queues[p] = (pool_queue*)calloc(threads, sizeof(pool_queue));
+    for (int32_t i = 0; i < threads; i++) {
+      pool_queue* q = &pool->queues[p][i];
+      task_queue_init(&q->queue);
+      pthread_mutex_init(&q->lock, NULL);
+    }
+  }
+
   pool_thread_info* pool_threads = (pool_thread_info*)pool->threads;
-  for (int i = 0; i < threads; i++) {
-    task_queue_init(&pool->low_prio_queues[i].queue);
-    pthread_mutex_init(&pool->low_prio_queues[i].lock, NULL);
 
-    task_queue_init(&pool->high_prio_queues[i].queue);
-    pthread_mutex_init(&pool->high_prio_queues[i].lock, NULL);
-
+  for (int32_t i = 0; i < threads; i++) {
     pool_thread_info* t = &pool_threads[i];
     t->thread_num = i;
     t->pool = pool;

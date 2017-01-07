@@ -4,7 +4,7 @@
 #include "task.h"
 #include "task_queue.h"
 
-typedef enum { TP_LOW, TP_HIGH } task_priority;
+typedef enum { TP_HIGH, TP_MED, TP_LOW, TP_COUNT } task_priority;
 
 typedef struct {
   task_queue queue;
@@ -15,12 +15,11 @@ typedef struct {
   int num_threads;
   void* threads;
   void* sema;
-  pool_queue* low_prio_queues;
-  pool_queue* high_prio_queues;
+  pool_queue* queues[TP_COUNT];
   atomic_int insert_idx;
 } taskpool;
 
-taskpool* taskpool_create(int threads);
+taskpool* taskpool_create(int32_t threads);
 void taskpool_wait(taskpool* pool, task* t, task_priority priority);
 void taskpool_post(taskpool* pool, task* t, task_priority priority);
 void taskpool_destroy(taskpool* pool);

@@ -1,5 +1,6 @@
 #include "task_queue.h"
 #include <stdlib.h>
+#include "tl_log.h"
 
 static int task_queue_full(const task_queue* q) {
   if (q->length == q->capacity) {
@@ -22,10 +23,18 @@ void task_queue_init(task_queue* q) {
 }
 
 void task_queue_push(task_queue* q, task* t) {
-
   if (task_queue_full(q)) {
-    q->capacity = q->capacity * 1.5;
-    q->tasks = (task**)realloc(q->tasks, q->capacity * sizeof(task*));
+    int32_t new_cap = q->capacity * 1.5;
+    task** new_tasks = (task**)calloc(new_cap, sizeof(task*));
+
+    for (int i = 0; i < q->length; i++) {
+      new_tasks[i] = q->tasks[(q->start + i) % q->capacity];
+    }
+
+    free(q->tasks);
+    q->start = 0;
+    q->capacity = new_cap;
+    q->tasks = new_tasks;
   }
 
   const int32_t insert_idx = (q->start + q->length) % q->capacity;

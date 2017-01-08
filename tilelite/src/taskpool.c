@@ -58,14 +58,26 @@ static void* pool_task(void* arg) {
 #ifdef DEBUG
       int64_t start_time = tl_usec_now();
 #endif
-      if (t->deferred) {
-        t->execute(t->arg);
-        task_destroy(t);
-      } else {
-        pthread_mutex_lock(&t->lock);
-        t->execute(t->arg);
-        pthread_cond_signal(&t->cv);
-        pthread_mutex_unlock(&t->lock);
+      switch (t->type) {
+        case TASK_FIREFORGET: {
+          t->execute(t->arg);
+          task_destroy(t);
+          break;
+        }
+        case TASK_SINGLEWAIT: {
+          pthread_mutex_lock(&t->lock);
+          t->execute(t->arg);
+          pthread_cond_signal(&t->cv);
+          pthread_mutex_unlock(&t->lock);
+          break;
+        }
+        case TASK_MULTIWAIT: {
+          t->execute(t->arg);
+          sem_post(t->waitall_sema);
+          break;
+        };
+        default:
+          break;
       }
 #ifdef DEBUG
       tl_log("[pool-%d] task exec: %.3f ms", info->thread_num,
@@ -107,6 +119,7 @@ taskpool* taskpool_create(int32_t threads) {
 }
 
 void taskpool_wait(taskpool* pool, task* t, task_priority priority) {
+  t->type = TASK_SINGLEWAIT;
   pool_add_task(pool, t, priority);
   pthread_mutex_lock(&t->lock);
   sem_post(pool->sema);
@@ -115,9 +128,25 @@ void taskpool_wait(taskpool* pool, task* t, task_priority priority) {
 }
 
 void taskpool_post(taskpool* pool, task* t, task_priority priority) {
-  t->deferred = 1;
+  t->type = TASK_FIREFORGET;
   pool_add_task(pool, t, priority);
   sem_post(pool->sema);
+}
+
+void taskpool_wait_all(taskpool* pool, task** tasks, int32_t count,
+                       task_priority priority) {
+  sem_t wait_sema;
+  sem_init(&wait_sema, 0, count);
+
+  for (int32_t i = 0; i < count; i++) {
+    task* t = tasks[i];
+    t->type = TASK_MULTIWAIT;
+    t->waitall_sema = &wait_sema;
+    pool_add_task(pool, t, priority);
+  }
+
+  sem_post(pool->sema);
+  sem_wait(&wait_sema);
 }
 
 void taskpool_destroy(taskpool* pool) {

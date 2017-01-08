@@ -48,6 +48,8 @@ static int32_t get_task(taskpool* pool, task** t) {
 static void* pool_task(void* arg) {
   pool_thread_info* info = (pool_thread_info*)arg;
 
+  const task_extra_info extra = {.executing_thread_idx = info->thread_num};
+
   for (;;) {
     sem_wait(info->sema);
 
@@ -60,19 +62,19 @@ static void* pool_task(void* arg) {
 #endif
       switch (t->type) {
         case TASK_FIREFORGET: {
-          t->execute(t->arg);
+          t->execute(t->arg, &extra);
           task_destroy(t);
           break;
         }
         case TASK_SINGLEWAIT: {
           pthread_mutex_lock(&t->lock);
-          t->execute(t->arg);
+          t->execute(t->arg, &extra);
           pthread_cond_signal(&t->cv);
           pthread_mutex_unlock(&t->lock);
           break;
         }
         case TASK_MULTIWAIT: {
-          t->execute(t->arg);
+          t->execute(t->arg, &extra);
           sem_post(t->waitall_sema);
           break;
         };
@@ -136,17 +138,24 @@ void taskpool_post(taskpool* pool, task* t, task_priority priority) {
 void taskpool_wait_all(taskpool* pool, task** tasks, int32_t count,
                        task_priority priority) {
   sem_t wait_sema;
-  sem_init(&wait_sema, 0, count);
+  sem_init(&wait_sema, 0, 0);
 
   for (int32_t i = 0; i < count; i++) {
     task* t = tasks[i];
     t->type = TASK_MULTIWAIT;
     t->waitall_sema = &wait_sema;
     pool_add_task(pool, t, priority);
+    sem_post(pool->sema);
   }
 
-  sem_post(pool->sema);
-  sem_wait(&wait_sema);
+  int32_t left = count;
+
+  while (left > 0) {
+    sem_wait(&wait_sema);
+    left--;
+  }
+
+  sem_destroy(&wait_sema);
 }
 
 void taskpool_destroy(taskpool* pool) {

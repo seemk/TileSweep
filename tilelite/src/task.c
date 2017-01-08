@@ -1,8 +1,8 @@
 #include "task.h"
-#include <stdlib.h>
 #include <assert.h>
+#include <stdlib.h>
 
-task* task_create(void* (*execute)(void*), void* arg) {
+task* task_create(task_fn execute, void* arg) {
   task* t = (task*)calloc(1, sizeof(task));
   assert(pthread_mutex_init(&t->lock, NULL) == 0);
   assert(pthread_cond_init(&t->cv, NULL) == 0);

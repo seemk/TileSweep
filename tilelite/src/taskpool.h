@@ -14,8 +14,8 @@ typedef struct {
 typedef struct {
   int num_threads;
   void* threads;
-  void* sema;
   pool_queue* queues[TP_COUNT];
+  void* sema;
   atomic_int insert_idx;
 } taskpool;
 

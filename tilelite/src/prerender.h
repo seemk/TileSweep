@@ -15,6 +15,7 @@ typedef struct {
   int32_t zoom;
   int32_t num_tile_coordinates;
   vec2i* tile_coordinates;
+  void* user;
 } collision_check_job;
 
 typedef struct {

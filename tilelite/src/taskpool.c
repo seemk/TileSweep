@@ -20,6 +20,7 @@ int pool_queue_pop(pool_queue* q, task** t) {
 }
 
 void pool_queue_push(pool_queue* q, task* t) {
+  assert(t);
   pthread_mutex_lock(&q->lock);
   task_queue_push(&q->queue, t);
   pthread_mutex_unlock(&q->lock);
@@ -33,8 +34,8 @@ static void pool_add_task(taskpool* pool, task* t, task_priority priority) {
 }
 
 static int32_t get_task(taskpool* pool, task** t) {
-  for (int32_t p = TP_HIGH; p <= TP_LOW; p++) {
-    for (int i = 0; i < pool->num_threads; i++) {
+  for (int32_t p = TP_HIGH; p < TP_COUNT; p++) {
+    for (int32_t i = 0; i < pool->num_threads; i++) {
       if (pool_queue_pop(&pool->queues[p][i], t)) {
         return 1;
       }
@@ -48,27 +49,29 @@ static void* pool_task(void* arg) {
   pool_thread_info* info = (pool_thread_info*)arg;
 
   for (;;) {
+    sem_wait(info->sema);
+
     task* t = NULL;
 
     if (get_task(info->pool, &t)) {
+      assert(t);
 #ifdef DEBUG
       int64_t start_time = tl_usec_now();
 #endif
-      pthread_mutex_lock(&t->lock);
-      t->execute(t->arg);
-      pthread_cond_signal(&t->cv);
-      pthread_mutex_unlock(&t->lock);
-      if (t->cleanup) {
-        t->cleanup(t->arg);
+      if (t->deferred) {
+        t->execute(t->arg);
         task_destroy(t);
+      } else {
+        pthread_mutex_lock(&t->lock);
+        t->execute(t->arg);
+        pthread_cond_signal(&t->cv);
+        pthread_mutex_unlock(&t->lock);
       }
 #ifdef DEBUG
       tl_log("[pool-%d] task exec: %.3f ms", info->thread_num,
              (tl_usec_now() - start_time) / 1000.0);
 #endif
     }
-
-    sem_wait(info->sema);
   }
 }
 
@@ -78,9 +81,6 @@ taskpool* taskpool_create(int32_t threads) {
   pool->threads = calloc(threads, sizeof(pool_thread_info));
   pool->sema = calloc(1, sizeof(sem_t));
 
-  atomic_init(&pool->insert_idx, 0);
-  sem_init(pool->sema, 0, 0);
-
   for (int32_t p = TP_HIGH; p < TP_COUNT; p++) {
     pool->queues[p] = (pool_queue*)calloc(threads, sizeof(pool_queue));
     for (int32_t i = 0; i < threads; i++) {
@@ -89,6 +89,9 @@ taskpool* taskpool_create(int32_t threads) {
       pthread_mutex_init(&q->lock, NULL);
     }
   }
+
+  sem_init(pool->sema, 0, 0);
+  atomic_init(&pool->insert_idx, 0);
 
   pool_thread_info* pool_threads = (pool_thread_info*)pool->threads;
 
@@ -108,9 +111,11 @@ void taskpool_wait(taskpool* pool, task* t, task_priority priority) {
   pthread_mutex_lock(&t->lock);
   sem_post(pool->sema);
   pthread_cond_wait(&t->cv, &t->lock);
+  pthread_mutex_unlock(&t->lock);
 }
 
 void taskpool_post(taskpool* pool, task* t, task_priority priority) {
+  t->deferred = 1;
   pool_add_task(pool, t, priority);
   sem_post(pool->sema);
 }

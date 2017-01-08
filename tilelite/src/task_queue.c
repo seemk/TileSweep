@@ -1,6 +1,5 @@
 #include "task_queue.h"
 #include <stdlib.h>
-#include "tl_log.h"
 
 static int task_queue_full(const task_queue* q) {
   if (q->length == q->capacity) {

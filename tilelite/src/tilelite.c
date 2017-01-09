@@ -317,7 +317,7 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
     return 0;
   }
 
-  uint64_t pos_hash = tile_hash(&t);
+  const uint64_t pos_hash = tile_hash(&t);
   image img = {0};
 
   tilelite_result result = res_ok;
@@ -331,8 +331,8 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
     task_destroy(render_task);
 
     if (renderer_info.success) {
-      uint64_t image_hash = XXH64(img.data, img.len, 0);
       img = renderer_info.img;
+      uint64_t image_hash = XXH64(img.data, img.len, 0);
 
       image write_img;
       write_img.width = img.width;
@@ -417,14 +417,12 @@ typedef struct {
 } renderer_create_args;
 
 static void* setup_renderer(void* arg, const task_extra_info* extra) {
-  tl_log("setup renderer");
   (void)extra;
   renderer_create_args* args = (renderer_create_args*)arg;
   tl_options* opt = args->options;
   tile_renderer* renderer =
       tile_renderer_create(opt->mapnik_xml, opt->plugins, opt->fonts);
   args->shared->renderers[args->renderer_idx] = renderer;
-  tl_log("renderer create done");
   return NULL;
 }
 

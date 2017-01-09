@@ -1,8 +1,8 @@
 #include "image_db.h"
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 #include "sqlite3/sqlite3.h"
 #include "tl_log.h"
 
@@ -130,7 +130,7 @@ int32_t image_db_add_position(image_db* db, uint64_t position_hash,
     tl_log("add position failed %d: %s", res, sqlite3_errstr(res));
   }
 
-  return res == SQLITE_DONE ? 0 : 1;
+  return res == SQLITE_DONE ? 1 : 0;
 }
 
 int32_t image_db_add_image(image_db* db, const image* img,
@@ -150,5 +150,5 @@ int32_t image_db_add_image(image_db* db, const image* img,
     tl_log("add image failed %d: %s", res, sqlite3_errstr(res));
   }
 
-  return res == SQLITE_DONE ? 0 : 1;
+  return res == SQLITE_DONE ? 1 : 0;
 }

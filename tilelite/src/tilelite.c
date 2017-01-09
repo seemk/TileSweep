@@ -7,7 +7,7 @@
 #include "image.h"
 #include "image_db.h"
 #include "json/parson.h"
-#include "prerender_db.h"
+#include "prerender.h"
 #include "stretchy_buffer.h"
 #include "taskpool.h"
 #include "tcp.h"
@@ -282,18 +282,6 @@ static int start_prerender(h2o_handler_t* h, h2o_req_t* req) {
   }
 
   json_value_free(root);
-
-  prerender_db* db = prerender_db_open(STATUS_DB);
-  prerender->id = prerender_db_add_job(db, prerender);
-  prerender_db_close(db);
-
-  if (prerender->id < 1) {
-    tl_log("failed to create prerender task");
-    free(prerender->coordinates);
-    free(prerender);
-    send_server_error(req);
-    return 0;
-  }
 
   task* setup_prerender_task = task_create(setup_prerender, prerender);
   taskpool_post(shared->task_pool, setup_prerender_task, TP_LOW);

@@ -29,7 +29,6 @@ add_executable(tilelite
   sqlite3/sqlite3.c
   parg/parg.c
   prerender.c
-  prerender_db.c
 )
 
 add_executable(tests

@@ -27,10 +27,6 @@ static void* commit_pending(void* arg) {
     while (q->write_queue.try_dequeue(task)) {
       if (image_db_add_image(q->db, &task.img, task.image_hash)) {
         image_db_add_position(q->db, tile_hash(&task.tile), task.image_hash);
-        int64_t end_time = tl_usec_now();
-        tl_tile t = task.tile;
-        tl_log("[%d, %d, %d, %d, %d] insert [%.2f ms]", t.w, t.h, t.x, t.y, t.z,
-               double(end_time - task.start_time) / 1000.0);
       }
 
       free(task.img.data);

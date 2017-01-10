@@ -148,14 +148,16 @@ static void* render_tile_background(void* arg, const task_extra_info* extra) {
   int32_t success = render_tile(renderer, &args->t, &args->img);
 
   if (success) {
-    tl_log("background render tile done %d, %d, %d", args->t.x, args->t.y,
+    const uint64_t image_hash = XXH64(args->img.data, args->img.len, 0);
+    tl_write_queue_push(shared->write_queue, args->t, args->img, image_hash);
+    tl_log("background render; tile [%d, %d, %d] done", args->t.x, args->t.y,
            args->t.z);
   } else {
-    tl_log("background render failed");
-  }
-
-  if (args->img.data) {
-    free(args->img.data);
+    tl_log("background render; tile [%d, %d, %d] fail", args->t.x, args->t.y,
+           args->t.z);
+    if (args->img.data) {
+      free(args->img.data);
+    }
   }
 
   free(args);
@@ -375,11 +377,11 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
 
   int64_t req_time = tl_usec_now() - req_start;
   if (req_time > 1000) {
-    tl_log("[%d, %d, %d, %d, %d] (%d bytes) | %.2f ms [e: %d]", t.w, t.h, t.z,
-           t.x, t.y, img.len, req_time / 1000.0, existing);
+    tl_log("[%d, %d, %d, %d, %d] (%d bytes) | %.2f ms [cache: %d]", t.w, t.h,
+           t.z, t.x, t.y, img.len, req_time / 1000.0, existing);
   } else {
-    tl_log("[%d, %d, %d, %d, %d] (%d bytes) | %ld us [e: %d]", t.w, t.h, t.z,
-           t.x, t.y, img.len, req_time, existing);
+    tl_log("[%d, %d, %d, %d, %d] (%d bytes) | %ld us [cache: %d]", t.w, t.h,
+           t.z, t.x, t.y, img.len, req_time, existing);
   }
 
   return 0;

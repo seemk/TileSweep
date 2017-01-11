@@ -17,7 +17,7 @@ static inline vec2d pixel_to_meter(double x, double y, double zoom,
 }
 
 vec2i mercator_to_tile(double x, double y, int32_t zoom, int32_t tile_size) {
-  assert(tile_size > 0 && zoom > 0);
+  assert(tile_size > 0 && zoom >= 0);
   const double size = (double)tile_size;
   const double reso = resolution(zoom, size);
 

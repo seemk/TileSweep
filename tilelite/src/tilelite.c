@@ -249,7 +249,7 @@ static int start_prerender(h2o_handler_t* h, h2o_req_t* req) {
     tile_size = 256;
   }
 
-  if (coords_json == NULL || min_zoom == 0.0 || max_zoom == 0.0 ||
+  if (coords_json == NULL || min_zoom < 0.0 || max_zoom < 0.0 ||
       min_zoom > MAX_ZOOM_LEVEL || max_zoom > MAX_ZOOM_LEVEL) {
     send_bad_request(req);
     json_value_free(root);
@@ -291,6 +291,17 @@ static int start_prerender(h2o_handler_t* h, h2o_req_t* req) {
   send_ok_request(req);
   return 0;
 }
+
+static int handle_prerender_req(h2o_handler_t* h, h2o_req_t* req) {
+  if (h2o_memis(req->method.base, req->method.len, H2O_STRLIT("GET"))) {
+    return -1;
+  } else if (h2o_memis(req->method.base, req->method.len, H2O_STRLIT("POST"))) {
+    return start_prerender(h, req);
+  }
+
+  return -1;
+}
+
 
 static void* render_tile_handler(void* arg, const task_extra_info* extra) {
   tile_render_task* task = (tile_render_task*)arg;

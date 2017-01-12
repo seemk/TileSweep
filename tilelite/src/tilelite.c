@@ -32,6 +32,7 @@ typedef struct {
   taskpool* task_pool;
   tl_write_queue* write_queue;
   tile_renderer** renderers;
+  tilelite_stats* stats;
 } tilelite_shared_ctx;
 
 typedef struct {
@@ -134,6 +135,7 @@ static void send_server_error(h2o_req_t* req) {
 
 typedef struct {
   tilelite_shared_ctx* shared;
+  prerender_job_stats* stats;
   tl_tile t;
   image img;
 } tile_render_args;
@@ -153,12 +155,15 @@ static void* render_tile_background(void* arg, const task_extra_info* extra) {
     tl_log("background render; tile [%d, %d, %d] done", args->t.x, args->t.y,
            args->t.z);
   } else {
+    // TODO: Count failed tiles
     tl_log("background render; tile [%d, %d, %d] fail", args->t.x, args->t.y,
            args->t.z);
     if (args->img.data) {
       free(args->img.data);
     }
   }
+
+  atomic_fetch_add(&args->stats->current_tiles, 1);
 
   free(args);
   return NULL;
@@ -172,11 +177,15 @@ static void* calculate_tiles(void* arg, const task_extra_info* extra) {
   tl_log("tile calc (%d %d, %d %d) job finished; tile count: %d", job->x_start,
          job->y_start, job->x_end, job->y_end, sb_count(tiles));
 
+  prerender_job_stats* stats = job->stats;
+  atomic_fetch_add(&stats->tile_estimate, sb_count(tiles));
+
   for (int32_t i = 0; i < sb_count(tiles); i++) {
     vec2i t = tiles[i];
     tile_render_args* render_args =
         (tile_render_args*)calloc(1, sizeof(tile_render_args));
     render_args->shared = shared;
+    render_args->stats = stats;
     render_args->t = (tl_tile){.x = t.x,
                                .y = t.y,
                                .z = job->zoom,
@@ -204,11 +213,16 @@ static void* setup_prerender(void* arg, const task_extra_info* info) {
       req->coordinates, req->num_coordinates, req->min_zoom, req->max_zoom,
       req->tile_size, 4096);
 
+  prerender_job_stats* stats =
+      prerender_job_stats_create(req->coordinates, req->num_coordinates);
+  tilelite_stats_add_prerender(shared->stats, stats);
+
   tl_log("num jobs: %d", sb_count(jobs));
   for (int j = 0; j < sb_count(jobs); j++) {
     collision_check_job* job = jobs[j];
     job->id = req->id;
     job->user = req->user;
+    job->stats = stats;
     tl_log("%p %d %d -> %d %d", job, job->x_start, job->y_start, job->x_end,
            job->y_end);
 
@@ -301,7 +315,6 @@ static int handle_prerender_req(h2o_handler_t* h, h2o_req_t* req) {
 
   return -1;
 }
-
 
 static void* render_tile_handler(void* arg, const task_extra_info* extra) {
   tile_render_task* task = (tile_render_task*)arg;
@@ -454,6 +467,7 @@ int main(int argc, char** argv) {
   shared->write_queue = tl_write_queue_create(image_db_open(opt.database));
   shared->renderers =
       (tile_renderer**)calloc(shared->num_task_threads, sizeof(tile_renderer*));
+  shared->stats = tilelite_stats_create();
 
   task** startup_tasks =
       (task**)calloc(shared->num_task_threads, sizeof(task*));

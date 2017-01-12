@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include "tl_math.h"
+#include "stats.h"
 
 typedef struct {
   vec2i top_left;
@@ -16,6 +17,7 @@ typedef struct {
   int32_t num_tile_coordinates;
   vec2i* tile_coordinates;
   void* user;
+  prerender_job_stats* stats;
 } collision_check_job;
 
 typedef struct {

@@ -23,6 +23,7 @@ add_executable(tilelite
   tile_renderer.cpp
 
   poly_hit_test.c
+  stats.c
 
   ini/ini.c
   json/parson.c

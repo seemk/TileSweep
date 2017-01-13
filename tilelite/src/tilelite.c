@@ -102,13 +102,6 @@ static h2o_pathconf_t* register_handler(h2o_hostconf_t* conf, const char* path,
   return path_conf;
 }
 
-static int serve_job_get(h2o_handler_t* h, h2o_req_t* req) {
-  tl_h2o_ctx* h2o = (tl_h2o_ctx*)req->conn->ctx;
-  http_ctx* c = (http_ctx*)h2o->user;
-  h2o_generator_t gen = {NULL, NULL};
-  return 0;
-}
-
 static void send_bad_request(h2o_req_t* req) {
   h2o_generator_t gen = {NULL, NULL};
   h2o_start_response(req, &gen);
@@ -306,16 +299,6 @@ static int start_prerender(h2o_handler_t* h, h2o_req_t* req) {
   return 0;
 }
 
-static int handle_prerender_req(h2o_handler_t* h, h2o_req_t* req) {
-  if (h2o_memis(req->method.base, req->method.len, H2O_STRLIT("GET"))) {
-    return -1;
-  } else if (h2o_memis(req->method.base, req->method.len, H2O_STRLIT("POST"))) {
-    return start_prerender(h, req);
-  }
-
-  return -1;
-}
-
 static void* render_tile_handler(void* arg, const task_extra_info* extra) {
   tile_render_task* task = (tile_render_task*)arg;
   tile_renderer* renderer =
@@ -452,6 +435,63 @@ static void* setup_renderer(void* arg, const task_extra_info* extra) {
   return NULL;
 }
 
+static int get_status(h2o_handler_t* h, h2o_req_t* req) {
+  if (!h2o_memis(req->method.base, req->method.len, H2O_STRLIT("GET"))) {
+    return -1;
+  }
+
+  tl_h2o_ctx* h2o = (tl_h2o_ctx*)req->conn->ctx;
+  http_ctx* c = (http_ctx*)h2o->user;
+  tilelite_shared_ctx* shared = c->shared;
+  tilelite_stats* stats = shared->stats;
+
+  JSON_Value* root = json_value_init_object();
+  JSON_Object* root_obj = json_value_get_object(root);
+
+  json_object_set_value(root_obj, "renders", json_value_init_array());
+  JSON_Array* renders = json_object_get_array(root_obj, "renders");
+
+  pthread_mutex_lock(&stats->lock);
+  for (int32_t i = 0; i < sb_count(stats->prerenders); i++) {
+    prerender_job_stats* job_stats = stats->prerenders[i];
+    JSON_Value* prerender_val = json_value_init_object();
+    JSON_Object* prerender_json = json_object(prerender_val);
+
+    const double max_tiles =
+        atomic_load_explicit(&job_stats->max_tiles, memory_order_relaxed);
+    const double tile_estimate =
+        atomic_load_explicit(&job_stats->tile_estimate, memory_order_relaxed);
+    const double current_tiles =
+        atomic_load_explicit(&job_stats->current_tiles, memory_order_relaxed);
+
+    json_object_set_number(prerender_json, "maxTiles", max_tiles);
+    json_object_set_number(prerender_json, "tileEstimate", tile_estimate);
+    json_object_set_number(prerender_json, "currentTiles", current_tiles);
+    json_array_append_value(renders, prerender_val);
+  }
+  pthread_mutex_unlock(&stats->lock);
+
+  char* json = json_serialize_to_string(root);
+  json_value_free(root);
+
+  h2o_generator_t gen = {NULL, NULL};
+  h2o_start_response(req, &gen);
+  req->res.status = 200;
+  req->res.reason = "Ok";
+  
+  h2o_add_header(&req->pool, &req->res.headers, H2O_TOKEN_CONTENT_TYPE,
+                   H2O_STRLIT("application/json"));
+
+  h2o_iovec_t body;
+  body.base = json;
+  body.len = strlen(json);
+  h2o_send(req, &body, 1, 1);
+
+  json_free_serialized_string(json);
+
+  return 0;
+}
+
 int main(int argc, char** argv) {
   set_signal_handler(SIGPIPE, SIG_IGN);
 
@@ -496,6 +536,7 @@ int main(int argc, char** argv) {
       &conf.globalconf, h2o_iovec_init(H2O_STRLIT("default")), 65535);
   register_handler(hostconf, "/tile", serve_tile);
   register_handler(hostconf, "/prerender", start_prerender);
+  register_handler(hostconf, "/status", get_status);
   h2o_file_register(h2o_config_register_path(hostconf, "/", 0), "ui", NULL,
                     NULL, 0);
 

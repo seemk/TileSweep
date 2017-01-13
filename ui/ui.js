@@ -30,6 +30,21 @@ function sendPrerenderRequest(prerender, success, fail) {
   req.send(JSON.stringify(prerender));
 }
 
+function loadStatus(success, fail) {
+  var url = "/status";
+  var req = new XMLHttpRequest();
+  req.open("GET", url);
+  req.onload = function() {
+    if (req.status == 200) {
+      success(JSON.parse(req.responseText));
+    } else {
+      fail();
+    }
+  }
+
+  req.send();
+}
+
 var state = {};
 var submitButton;
 
@@ -180,6 +195,16 @@ document.onkeydown = function(evt) {
     map.addInteraction(draw);
   }
 };
+
+setInterval(function() {
+  var onSuccess = function(stats) {
+    console.log(stats);
+  };
+  var onFail = function() {
+    console.log("fail"); 
+  };
+  loadStatus(onSuccess, onFail); 
+}, 1000);
 
 }
 

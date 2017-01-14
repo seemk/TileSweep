@@ -19,12 +19,6 @@ typedef struct {
 } vec2i;
 
 typedef struct {
-  int32_t x;
-  int32_t y;
-  int32_t z;
-} vec3i;
-
-typedef struct {
   double x;
   double y;
   double z;

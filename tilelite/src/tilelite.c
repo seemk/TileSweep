@@ -478,9 +478,9 @@ static int get_status(h2o_handler_t* h, h2o_req_t* req) {
   h2o_start_response(req, &gen);
   req->res.status = 200;
   req->res.reason = "Ok";
-  
+
   h2o_add_header(&req->pool, &req->res.headers, H2O_TOKEN_CONTENT_TYPE,
-                   H2O_STRLIT("application/json"));
+                 H2O_STRLIT("application/json"));
 
   h2o_iovec_t body;
   body.base = json;

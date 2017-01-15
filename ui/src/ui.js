@@ -45,7 +45,8 @@ const ControlPanel = React.createClass({
   },
 
   submitPrerender: function() {
-    console.log("submit prerender");
+    const that = this;
+
     if (!this.state.tileSize256 && !this.state.tileSize512) {
       this.setState({
         error: "At least one tile size required."
@@ -64,11 +65,11 @@ const ControlPanel = React.createClass({
     const minZoom = this.state.minZoom;
     const maxZoom = this.state.maxZoom;
 
-    var submitSuccess = function() {
-      console.log("submit success");
+    const submitSuccess = function() {
+      that.updateStatus();
     };
 
-    var submitError = function() {
+    const submitError = function() {
       console.log("submit error");
     };
 
@@ -116,15 +117,20 @@ const ControlPanel = React.createClass({
 
     const vector = new ol.layer.Vector({
       source: this.vectorSource,
-      style: new ol.style.Style({
-        fill: new ol.style.Fill({
-          color: 'rgba(204,204,204,0.2)'
-        }),
-        stroke: new ol.style.Stroke({
-          color: '#525252',
-          width: 2
-        })
-      })
+      style: f => {
+        const defaultStyle = new ol.style.Style({
+          fill: new ol.style.Fill({
+            color: "rgba(204,204,204,0.2)"
+          }),
+          stroke: new ol.style.Stroke({
+            color: "#525252",
+            width: 2
+          })
+        });
+
+        const s = f.getStyle() || defaultStyle;
+        return s;
+      }
     });
 
     this.map = new ol.Map({
@@ -159,7 +165,8 @@ const ControlPanel = React.createClass({
       that.vectorSource.clear();
       const coords = evt.feature.getGeometry().getCoordinates()[0].slice(0, -1);
       that.setState({
-        coordinates: coords
+        coordinates: coords,
+        selectedJobId: -1
       });
     });
 
@@ -187,14 +194,33 @@ const ControlPanel = React.createClass({
     return null;
   },
 
-  jobClicked: function(id) {
-    if (id == this.state.selectedJobId) {
+  jobClicked: function(job) {
+		this.vectorSource.clear();
+    if (job.id == this.state.selectedJobId) {
       this.setState({
         selectedJobId: -1
       });
     } else {
+      const coordinates = job.boundary;
+      const f = new ol.Feature({
+        geometry: new ol.geom.Polygon([coordinates]),
+      });
+
+      const style = new ol.style.Style({
+        stroke: new ol.style.Stroke({
+          color: "red",
+          width: 2
+        }),
+        fill: new ol.style.Fill({
+          color: "rgba(255, 0, 0, 0.1)"
+        })
+      });
+
+      f.setStyle(style);
+
+      this.vectorSource.addFeature(f);
       this.setState({
-        selectedJobId: id
+        selectedJobId: job.id
       });
     }
   },
@@ -207,12 +233,32 @@ const ControlPanel = React.createClass({
         key={j.id}
         selected={activeJobId == j.id}
         job={j}
-        onClick={() => that.jobClicked(j.id)}
+        onClick={() => that.jobClicked(j)}
       />
     );
+
+    const filler = "No active render jobs.";
+    const content = jobs.length == 0 ? filler : jobs;
+
+    const outerStyle = {
+      margin: "12px 2px 2px 2px",
+      padding: "2px", 
+      width: "100%"
+    };
+
+    const listStyle = {
+      textAlign: "center",
+      width: "100%"
+    };
+
     return (
-      <div className="list-group">
-        {jobs} 
+      <div style={outerStyle}>
+        <div style={{textAlign: "center", width: "100%"}}>
+          Active render jobs
+        </div>
+        <div className="list-group" style={listStyle}>
+          {content}
+        </div>
       </div>
     );
   },

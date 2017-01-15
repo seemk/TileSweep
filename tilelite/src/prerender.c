@@ -112,13 +112,29 @@ collision_check_job** make_collision_check_jobs(
 }
 
 vec2i* calc_tiles(const collision_check_job* job) {
+  vec2i* tiles = NULL;
+
+  if (job->num_tile_coordinates == 1) {
+    sb_push(tiles, job->tile_coordinates[0]);
+    return tiles;
+  }
+
   poly_hit_test test_ctx;
   poly_hit_test_init(&test_ctx, job->tile_coordinates,
                      job->num_tile_coordinates);
 
-  vec2i* tiles = NULL;
   for (int32_t y = job->y_start; y <= job->y_end; y++) {
-    for (int32_t x = job->x_start; x <= job->x_end; x++) {
+
+    int32_t x_begin = job->top_left.x;
+    int32_t x_end = job->bot_right.x;
+
+    if (y == job->y_start) {
+      x_begin = job->x_start;
+    } else if (y == job->y_end) {
+      x_end = job->x_end;
+    }
+
+    for (int32_t x = x_begin; x <= x_end; x++) {
       vec2i pt = {.x = x, .y = y};
 
       int inside =

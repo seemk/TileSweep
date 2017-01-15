@@ -11,3 +11,11 @@ export function startPrerender(prerender, success, fail) {
     error: fail
   });
 }
+
+export function loadPrerenderStatus(success, fail) {
+  return $.ajax({
+    url: "/status",
+    success: success,
+    error: fail
+  });
+}

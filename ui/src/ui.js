@@ -1,7 +1,8 @@
 import React from "react";
 import ReactDOM from "react-dom";
 import ol from "openlayers";
-import { startPrerender } from "./API.js";
+import PrerenderJob from "./PrerenderJob.js";
+import { startPrerender, loadPrerenderStatus } from "./API.js";
 
 const ControlPanel = React.createClass({
 
@@ -11,7 +12,9 @@ const ControlPanel = React.createClass({
       minZoom: 0,
       maxZoom: 14,
       tileSize256: true,
-      tileSize512: false
+      tileSize512: false,
+      prerenderJobs: [],
+      selectedJobId: -1
     }
   },
 
@@ -92,6 +95,16 @@ const ControlPanel = React.createClass({
     });
   },
 
+  updatePrerenderStatus: function(s) {
+    this.setState({
+      prerenderJobs: s.renders
+    });
+  },
+
+  updateStatus: function() {
+    loadPrerenderStatus(this.updatePrerenderStatus, (err) => console.log(err));
+  },
+
   componentDidMount: function() {
     const that = this;
 
@@ -157,6 +170,9 @@ const ControlPanel = React.createClass({
         that.map.addInteraction(that.draw);
       }
     };
+
+    this.refreshStatusId = setInterval(this.updateStatus, 2000);
+    this.updateStatus();
   },
 
   renderError: function() {
@@ -169,6 +185,36 @@ const ControlPanel = React.createClass({
     }
 
     return null;
+  },
+
+  jobClicked: function(id) {
+    if (id == this.state.selectedJobId) {
+      this.setState({
+        selectedJobId: -1
+      });
+    } else {
+      this.setState({
+        selectedJobId: id
+      });
+    }
+  },
+
+  renderJobList: function() {
+    const that = this;
+    const activeJobId = this.state.selectedJobId;
+    const jobs = this.state.prerenderJobs.map(j =>
+      <PrerenderJob
+        key={j.id}
+        selected={activeJobId == j.id}
+        job={j}
+        onClick={() => that.jobClicked(j.id)}
+      />
+    );
+    return (
+      <div className="list-group">
+        {jobs} 
+      </div>
+    );
   },
   
   render: function() {
@@ -234,6 +280,7 @@ const ControlPanel = React.createClass({
             </button>
           </form>
           {this.renderError()}
+          {this.renderJobList()}
         </div>
         <div className="col-md-10">
           <div id="map" className="map">

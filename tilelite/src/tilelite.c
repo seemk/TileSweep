@@ -34,6 +34,7 @@ typedef struct {
   tl_write_queue* write_queue;
   tile_renderer** renderers;
   tilelite_stats* stats;
+  atomic_ulong job_id_counter;
 } tilelite_shared_ctx;
 
 typedef struct {
@@ -216,9 +217,11 @@ static void* setup_prerender(void* arg, const task_extra_info* info) {
       req->coordinates, req->num_coordinates, req->min_zoom, req->max_zoom,
       req->tile_size, 4096);
 
+  const uint64_t job_id = atomic_fetch_add(&shared->job_id_counter, 1);
   const int32_t num_tilecoord_jobs = sb_count(jobs);
+ 
   prerender_job_stats* stats = prerender_job_stats_create(
-      req->coordinates, req->num_coordinates, num_tilecoord_jobs);
+      req->coordinates, req->num_coordinates, job_id, num_tilecoord_jobs);
   tilelite_stats_add_prerender(shared->stats, stats);
 
   for (int32_t j = 0; j < num_tilecoord_jobs; j++) {
@@ -383,6 +386,8 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
     free(img.data);
   } else {
     if (result == res_failure) {
+      req->res.status = 500;
+      req->res.reason = "Internal Server Error";
     } else {
       req->res.status = 204;
       req->res.reason = "No Content";
@@ -472,10 +477,25 @@ static int get_status(h2o_handler_t* h, h2o_req_t* req) {
     const double current_tiles = (double)atomic_load_explicit(
         &job_stats->current_tiles, memory_order_relaxed);
 
+    json_object_set_number(prerender_json, "id", job_stats->id);
     json_object_set_number(prerender_json, "maxTiles", max_tiles);
     json_object_set_number(prerender_json, "numTileCoordinates",
                            num_tilecoords);
     json_object_set_number(prerender_json, "numCurrentTiles", current_tiles);
+
+    json_object_set_value(prerender_json, "boundary", json_value_init_array());
+    JSON_Array* boundary_json = json_object_get_array(prerender_json, "boundary");
+
+    for (int32_t c = 0; c < job_stats->num_coordinates; c++) {
+      vec2d coordinate = job_stats->coordinates[c];
+      JSON_Value* coordinate_val = json_value_init_array();
+      JSON_Array* coord_arr = json_array(coordinate_val);
+
+      json_array_append_number(coord_arr, coordinate.x);
+      json_array_append_number(coord_arr, coordinate.y);
+      json_array_append_value(boundary_json, coordinate_val);
+    }
+
     json_array_append_value(renders, prerender_val);
   }
   pthread_mutex_unlock(&stats->lock);
@@ -517,6 +537,7 @@ int main(int argc, char** argv) {
   shared->renderers =
       (tile_renderer**)calloc(shared->num_task_threads, sizeof(tile_renderer*));
   shared->stats = tilelite_stats_create();
+  atomic_init(&shared->job_id_counter, 1);
 
   task** startup_tasks =
       (task**)calloc(shared->num_task_threads, sizeof(task*));

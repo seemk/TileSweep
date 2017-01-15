@@ -7,6 +7,7 @@
 
 typedef struct {
   int64_t start_time;
+  uint64_t id;
   int32_t indice_calcs;
   atomic_ulong max_tiles;
   atomic_ulong num_tilecoords;
@@ -22,7 +23,7 @@ typedef struct {
 } tilelite_stats;
 
 prerender_job_stats* prerender_job_stats_create(const vec2d* coordinates,
-                                                int32_t count,
+                                                int32_t count, uint64_t id,
                                                 int32_t num_tilecoord_jobs);
 
 void prerender_job_stats_destroy(prerender_job_stats* stats);

@@ -5,13 +5,16 @@
 #include "tl_time.h"
 
 prerender_job_stats* prerender_job_stats_create(const vec2d* coordinates,
-                                                int32_t count) {
+                                                int32_t count,
+                                                int32_t num_tilecoord_jobs) {
   prerender_job_stats* stats =
       (prerender_job_stats*)calloc(1, sizeof(prerender_job_stats));
   stats->start_time = tl_usec_now();
+  stats->indice_calcs = num_tilecoord_jobs;
   atomic_init(&stats->max_tiles, 0);
-  atomic_init(&stats->tile_estimate, 0);
+  atomic_init(&stats->num_tilecoords, 0);
   atomic_init(&stats->current_tiles, 0);
+  atomic_init(&stats->indice_calcs_remain, num_tilecoord_jobs);
 
   stats->coordinates = (vec2d*)calloc(count, sizeof(vec2d));
   memcpy(stats->coordinates, coordinates, count * sizeof(vec2d));

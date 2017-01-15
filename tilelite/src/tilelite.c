@@ -136,6 +136,7 @@ typedef struct {
 static void* render_tile_background(void* arg, const task_extra_info* extra) {
   tile_render_args* args = (tile_render_args*)arg;
   tilelite_shared_ctx* shared = args->shared;
+  prerender_job_stats* stats = args->stats;
 
   const int32_t thread_idx = extra->executing_thread_idx;
   tile_renderer* renderer = shared->renderers[thread_idx];
@@ -156,7 +157,13 @@ static void* render_tile_background(void* arg, const task_extra_info* extra) {
     }
   }
 
-  atomic_fetch_add(&args->stats->current_tiles, 1);
+  atomic_fetch_add(&stats->current_tiles, 1);
+
+  if (atomic_load(&stats->indice_calcs_remain) == 0 &&
+      atomic_load(&stats->current_tiles) == atomic_load(&stats->num_tilecoords)) {
+    tilelite_stats_remove_prerender(shared->stats, stats);
+    prerender_job_stats_destroy(stats);
+  }
 
   free(args);
   return NULL;
@@ -171,7 +178,7 @@ static void* calculate_tiles(void* arg, const task_extra_info* extra) {
          job->y_start, job->x_end, job->y_end, sb_count(tiles));
 
   prerender_job_stats* stats = job->stats;
-  atomic_fetch_add(&stats->tile_estimate, sb_count(tiles));
+  atomic_fetch_add(&stats->num_tilecoords, sb_count(tiles));
 
   for (int32_t i = 0; i < sb_count(tiles); i++) {
     vec2i t = tiles[i];
@@ -188,6 +195,8 @@ static void* calculate_tiles(void* arg, const task_extra_info* extra) {
     task* tsk = task_create(render_tile_background, render_args);
     taskpool_post(shared->task_pool, tsk, TP_MED);
   }
+
+  atomic_fetch_sub(&stats->indice_calcs_remain, 1);
 
   sb_free(tiles);
   free(job->tile_coordinates);
@@ -206,18 +215,16 @@ static void* setup_prerender(void* arg, const task_extra_info* info) {
       req->coordinates, req->num_coordinates, req->min_zoom, req->max_zoom,
       req->tile_size, 4096);
 
-  prerender_job_stats* stats =
-      prerender_job_stats_create(req->coordinates, req->num_coordinates);
+  const int32_t num_tilecoord_jobs = sb_count(jobs);
+  prerender_job_stats* stats = prerender_job_stats_create(
+      req->coordinates, req->num_coordinates, num_tilecoord_jobs);
   tilelite_stats_add_prerender(shared->stats, stats);
 
-  tl_log("num jobs: %d", sb_count(jobs));
-  for (int j = 0; j < sb_count(jobs); j++) {
+  for (int32_t j = 0; j < num_tilecoord_jobs; j++) {
     collision_check_job* job = jobs[j];
     job->id = req->id;
     job->user = req->user;
     job->stats = stats;
-    tl_log("%p %d %d -> %d %d", job, job->x_start, job->y_start, job->x_end,
-           job->y_end);
 
     task* tiles_task = task_create(calculate_tiles, job);
     taskpool_post(shared->task_pool, tiles_task, TP_LOW);
@@ -457,16 +464,17 @@ static int get_status(h2o_handler_t* h, h2o_req_t* req) {
     JSON_Value* prerender_val = json_value_init_object();
     JSON_Object* prerender_json = json_object(prerender_val);
 
-    const double max_tiles =
-        atomic_load_explicit(&job_stats->max_tiles, memory_order_relaxed);
-    const double tile_estimate =
-        atomic_load_explicit(&job_stats->tile_estimate, memory_order_relaxed);
-    const double current_tiles =
-        atomic_load_explicit(&job_stats->current_tiles, memory_order_relaxed);
+    const double max_tiles = (double)atomic_load_explicit(&job_stats->max_tiles,
+                                                          memory_order_relaxed);
+    const double num_tilecoords = (double)atomic_load_explicit(
+        &job_stats->num_tilecoords, memory_order_relaxed);
+    const double current_tiles = (double)atomic_load_explicit(
+        &job_stats->current_tiles, memory_order_relaxed);
 
     json_object_set_number(prerender_json, "maxTiles", max_tiles);
-    json_object_set_number(prerender_json, "tileEstimate", tile_estimate);
-    json_object_set_number(prerender_json, "currentTiles", current_tiles);
+    json_object_set_number(prerender_json, "numTileCoordinates",
+                           num_tilecoords);
+    json_object_set_number(prerender_json, "numCurrentTiles", current_tiles);
     json_array_append_value(renders, prerender_val);
   }
   pthread_mutex_unlock(&stats->lock);

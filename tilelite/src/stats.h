@@ -1,15 +1,17 @@
 #pragma once
 
-#include <stdatomic.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include "tl_math.h"
 
 typedef struct {
   int64_t start_time;
+  int32_t indice_calcs;
   atomic_ulong max_tiles;
-  atomic_ulong tile_estimate;
+  atomic_ulong num_tilecoords;
   atomic_ulong current_tiles;
+  atomic_ulong indice_calcs_remain;
   vec2d* coordinates;
   int32_t num_coordinates;
 } prerender_job_stats;
@@ -20,7 +22,8 @@ typedef struct {
 } tilelite_stats;
 
 prerender_job_stats* prerender_job_stats_create(const vec2d* coordinates,
-                                                int32_t count);
+                                                int32_t count,
+                                                int32_t num_tilecoord_jobs);
 
 void prerender_job_stats_destroy(prerender_job_stats* stats);
 

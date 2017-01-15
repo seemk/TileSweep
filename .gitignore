@@ -9,3 +9,4 @@ logs/
 static/
 node_modules/
 npm-debug.log
+ui/bundle/tilelite.js

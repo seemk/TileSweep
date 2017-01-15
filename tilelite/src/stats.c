@@ -7,7 +7,7 @@
 prerender_job_stats* prerender_job_stats_create(const vec2d* coordinates,
                                                 int32_t count) {
   prerender_job_stats* stats =
-      (prerender_job_stats*)calloc(1, sizeof(prerender_job_stats*));
+      (prerender_job_stats*)calloc(1, sizeof(prerender_job_stats));
   stats->start_time = tl_usec_now();
   atomic_init(&stats->max_tiles, 0);
   atomic_init(&stats->tile_estimate, 0);

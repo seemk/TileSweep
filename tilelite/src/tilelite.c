@@ -27,6 +27,7 @@ typedef struct {
 } tl_h2o_ctx;
 
 typedef struct {
+  int32_t rendering_enabled;
   int32_t num_task_threads;
   int32_t num_http_threads;
   taskpool* task_pool;
@@ -57,7 +58,6 @@ typedef struct {
 static struct {
   h2o_globalconf_t globalconf;
   tl_options* opt;
-  int rendering;
 } conf;
 
 static void on_accept(h2o_socket_t* listener, const char* err) {
@@ -160,7 +160,8 @@ static void* render_tile_background(void* arg, const task_extra_info* extra) {
   atomic_fetch_add(&stats->current_tiles, 1);
 
   if (atomic_load(&stats->indice_calcs_remain) == 0 &&
-      atomic_load(&stats->current_tiles) == atomic_load(&stats->num_tilecoords)) {
+      atomic_load(&stats->current_tiles) ==
+          atomic_load(&stats->num_tilecoords)) {
     tilelite_stats_remove_prerender(shared->stats, stats);
     prerender_job_stats_destroy(stats);
   }
@@ -338,7 +339,7 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
 
   tilelite_result result = res_ok;
   int32_t existing = image_db_fetch(c->tile_db, pos_hash, t.w, t.h, &img);
-  if (!existing) {
+  if (!existing && shared->rendering_enabled) {
     tile_render_task renderer_info = {
         .tile = t, .img = img, .shared = shared, .success = 0};
 
@@ -505,10 +506,10 @@ int main(int argc, char** argv) {
 
   tl_options opt = tl_options_parse(argc, argv);
   conf.opt = &opt;
-  conf.rendering = strcmp(opt.rendering, "1") == 0;
 
   tilelite_shared_ctx* shared =
       (tilelite_shared_ctx*)calloc(1, sizeof(tilelite_shared_ctx));
+  shared->rendering_enabled = strcmp(opt.rendering, "1") == 0;
   shared->num_task_threads = cpu_core_count();
   shared->num_http_threads = shared->num_task_threads;
   shared->task_pool = taskpool_create(shared->num_task_threads);
@@ -523,19 +524,21 @@ int main(int argc, char** argv) {
   renderer_create_args* rc_args = (renderer_create_args*)calloc(
       shared->num_task_threads, sizeof(renderer_create_args));
 
-  for (int32_t i = 0; i < shared->num_task_threads; i++) {
-    rc_args[i] = (renderer_create_args){
-        .options = &opt, .shared = shared, .renderer_idx = i};
+  if (shared->rendering_enabled) {
+    for (int32_t i = 0; i < shared->num_task_threads; i++) {
+      rc_args[i] = (renderer_create_args){
+          .options = &opt, .shared = shared, .renderer_idx = i};
 
-    task* t = task_create(setup_renderer, &rc_args[i]);
-    startup_tasks[i] = t;
-  }
+      task* t = task_create(setup_renderer, &rc_args[i]);
+      startup_tasks[i] = t;
+    }
 
-  taskpool_wait_all(shared->task_pool, startup_tasks, shared->num_task_threads,
-                    TP_HIGH);
+    taskpool_wait_all(shared->task_pool, startup_tasks,
+                      shared->num_task_threads, TP_HIGH);
 
-  for (int32_t i = 0; i < shared->num_task_threads; i++) {
-    task_destroy(startup_tasks[i]);
+    for (int32_t i = 0; i < shared->num_task_threads; i++) {
+      task_destroy(startup_tasks[i]);
+    }
   }
 
   h2o_config_init(&conf.globalconf);
@@ -543,7 +546,11 @@ int main(int argc, char** argv) {
   h2o_hostconf_t* hostconf = h2o_config_register_host(
       &conf.globalconf, h2o_iovec_init(H2O_STRLIT("default")), 65535);
   register_handler(hostconf, "/tile", serve_tile);
-  register_handler(hostconf, "/prerender", start_prerender);
+  
+  if (shared->rendering_enabled) {
+    register_handler(hostconf, "/prerender", start_prerender);
+  }
+
   register_handler(hostconf, "/status", get_status);
   h2o_file_register(h2o_config_register_path(hostconf, "/", 0), "ui", NULL,
                     NULL, 0);

@@ -7,5 +7,5 @@ scgi_temp/
 uwsgi_temp/
 logs/
 static/
-elm-stuff/
-controlpanel.js
+node_modules/
+npm-debug.log

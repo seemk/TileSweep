@@ -8,6 +8,7 @@
 #include "image_db.h"
 #include "json/parson.h"
 #include "prerender.h"
+#include "regex/slre.h"
 #include "stretchy_buffer.h"
 #include "taskpool.h"
 #include "tcp.h"
@@ -219,7 +220,7 @@ static void* setup_prerender(void* arg, const task_extra_info* info) {
 
   const uint64_t job_id = atomic_fetch_add(&shared->job_id_counter, 1);
   const int32_t num_tilecoord_jobs = sb_count(jobs);
- 
+
   prerender_job_stats* stats = prerender_job_stats_create(
       req->coordinates, req->num_coordinates, job_id, num_tilecoord_jobs);
   tilelite_stats_add_prerender(shared->stats, stats);
@@ -337,12 +338,21 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
     return 0;
   }
 
+  int32_t from_cache = 0;
+  struct slre_cap capture = {0};
+  if (slre_match("cached=(true|false)", req->path.base, req->path.len, &capture,
+                 1, 0) > 0) {
+    if (strncmp("true", capture.ptr, capture.len) == 0) {
+      from_cache = 1;
+    }
+  }
+
   const uint64_t pos_hash = tile_hash(&t);
   image img = {0};
 
   tilelite_result result = res_ok;
   int32_t existing = image_db_fetch(c->tile_db, pos_hash, t.w, t.h, &img);
-  if (!existing && shared->rendering_enabled) {
+  if (!from_cache && !existing && shared->rendering_enabled) {
     tile_render_task renderer_info = {
         .tile = t, .img = img, .shared = shared, .success = 0};
 
@@ -354,11 +364,11 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
       img = renderer_info.img;
       uint64_t image_hash = XXH64(img.data, img.len, 0);
 
-      image write_img;
-      write_img.width = img.width;
-      write_img.height = img.height;
-      write_img.len = img.len;
-      write_img.data = (uint8_t*)calloc(write_img.len, 1);
+      image write_img = {.width = img.width,
+                         .height = img.height,
+                         .len = img.len,
+                         .data = (uint8_t*)calloc(img.len, 1)};
+
       memcpy(write_img.data, img.data, img.len);
       tl_write_queue_push(shared->write_queue, t, write_img, image_hash);
     } else {
@@ -484,7 +494,8 @@ static int get_status(h2o_handler_t* h, h2o_req_t* req) {
     json_object_set_number(prerender_json, "numCurrentTiles", current_tiles);
 
     json_object_set_value(prerender_json, "boundary", json_value_init_array());
-    JSON_Array* boundary_json = json_object_get_array(prerender_json, "boundary");
+    JSON_Array* boundary_json =
+        json_object_get_array(prerender_json, "boundary");
 
     for (int32_t c = 0; c < job_stats->num_coordinates; c++) {
       vec2d coordinate = job_stats->coordinates[c];
@@ -567,7 +578,7 @@ int main(int argc, char** argv) {
   h2o_hostconf_t* hostconf = h2o_config_register_host(
       &conf.globalconf, h2o_iovec_init(H2O_STRLIT("default")), 65535);
   register_handler(hostconf, "/tile", serve_tile);
-  
+
   if (shared->rendering_enabled) {
     register_handler(hostconf, "/prerender", start_prerender);
   }

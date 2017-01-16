@@ -30,6 +30,8 @@ add_executable(tilelite
   sqlite3/sqlite3.c
   parg/parg.c
   prerender.c
+
+  regex/slre.c
 )
 
 add_executable(tests

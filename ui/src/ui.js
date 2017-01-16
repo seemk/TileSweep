@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom";
 import ol from "openlayers";
 import PrerenderJob from "./PrerenderJob.js";
+import ButtonGroup from "./ButtonGroup.js";
 import { startPrerender, loadPrerenderStatus } from "./API.js";
 
 const ControlPanel = React.createClass({
@@ -14,7 +15,8 @@ const ControlPanel = React.createClass({
       tileSize256: true,
       tileSize512: false,
       prerenderJobs: [],
-      selectedJobId: -1
+      selectedJobId: -1,
+      activeRenderSourceIndex: 0
     }
   },
 
@@ -109,13 +111,21 @@ const ControlPanel = React.createClass({
   componentDidMount: function() {
     const that = this;
 
+    this.cachedSource = new ol.source.XYZ({
+      url: "/tile/{x}/{y}/{z}/256/256?cached=true"
+    });
+
+    this.cachedLayer = new ol.layer.Tile({
+      source: this.cachedSource
+    });
+
     this.osmLayer = new ol.layer.Tile({
       source: new ol.source.OSM()
     });
 
     this.vectorSource = new ol.source.Vector();
 
-    const vector = new ol.layer.Vector({
+    this.vectorLayer = new ol.layer.Vector({
       source: this.vectorSource,
       style: f => {
         const defaultStyle = new ol.style.Style({
@@ -134,7 +144,7 @@ const ControlPanel = React.createClass({
     });
 
     this.map = new ol.Map({
-      layers: [this.osmLayer, vector],
+      layers: [this.osmLayer, this.vectorLayer],
       target: "map",
       view: new ol.View({
         center: ol.proj.fromLonLat([24.747583, 59.461970]),
@@ -225,6 +235,32 @@ const ControlPanel = React.createClass({
     }
   },
 
+  tileSourceSelected: function(btn, idx) {
+    const map = this.map;
+    const layers = [this.osmLayer, this.vectorLayer, this.cachedLayer];
+
+    layers.forEach(l => map.removeLayer(l));
+
+    if (idx == 0) {
+      map.addLayer(this.osmLayer);
+      map.addLayer(this.vectorLayer);
+      
+      if (this.cacheSourceRefreshTimer) {
+        clearInterval(this.cacheSourceRefreshTimer);
+      }
+    } else {
+      map.addLayer(this.cachedLayer);
+      map.addLayer(this.vectorLayer);
+      const source = this.cachedSource;
+      source.refresh();
+      this.cacheSourceRefreshTimer = setInterval(() => source.refresh(), 5000);
+    }
+
+    this.setState({
+      activeRenderSourceIndex: idx
+    });
+  },
+
   renderJobList: function() {
     const that = this;
     const activeJobId = this.state.selectedJobId;
@@ -264,9 +300,21 @@ const ControlPanel = React.createClass({
   },
   
   render: function() {
+
+    const tileSourceButtons = [
+      {name: "All"},
+      {name: "Cached"}
+    ];
+
     return (
       <div className="row" style={{padding: "10px 0 10px 0"}}>
         <div className="col-md-2">
+          <div>
+            <ButtonGroup buttons={tileSourceButtons}
+              selectedIndex={this.state.activeRenderSourceIndex}
+              onClick={this.tileSourceSelected}
+            />
+          </div>
           <form>
             <div className="row">
               <label className="col-md-6 col-form-label">Zoom</label>

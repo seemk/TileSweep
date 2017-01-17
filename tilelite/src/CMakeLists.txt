@@ -23,6 +23,7 @@ add_executable(tilelite
   tile_renderer.cpp
 
   poly_hit_test.c
+  poly_fill.c
   stats.c
 
   ini/ini.c

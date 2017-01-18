@@ -37,9 +37,14 @@ add_executable(tilelite
 
 add_executable(tests
   poly_hit_test.c
+  poly_fill.c
   task.c
   task_queue.c
   test/tests.c
+)
+
+target_link_libraries(tests
+  m
 )
 
 target_link_libraries(

@@ -3,21 +3,7 @@
 #include "../poly_hit_test.h"
 #include "../task_queue.h"
 #include "minunit.h"
-
-static char* polygon_hit_test() {
-  vec2i points[] = {{4, 3}, {3, 4}, {3, 6}, {4, 7},
-                    {6, 7}, {7, 6}, {7, 4}, {6, 3}};
-
-  poly_hit_test t;
-  poly_hit_test_init(&t, points, 8);
-
-  mu_assert("out (3, 3)", !poly_hit_test_check(&t, (vec2i){.x = 3, .y = 3}));
-  mu_assert("out (4, 3)", !poly_hit_test_check(&t, (vec2i){.x = 4, .y = 3}));
-  mu_assert("in (5, 5)", poly_hit_test_check(&t, (vec2i){.x = 5, .y = 5}));
-  mu_assert("in (6, 6)", poly_hit_test_check(&t, (vec2i){.x = 6, .y = 6}));
-
-  return NULL;
-};
+#include "test_poly_fill.c"
 
 static char* task_queue_test() {
   task_queue* q = task_queue_create();
@@ -45,7 +31,7 @@ static char* task_queue_test() {
 
 static char* all() {
   mu_run_test(task_queue_test);
-  mu_run_test(polygon_hit_test);
+  mu_run_test(test_poly_fill);
   return NULL;
 }
 

@@ -4,6 +4,7 @@
 #include <math.h>
 #include "poly_hit_test.h"
 #include "stretchy_buffer.h"
+#include <string.h>
 #include "tl_math.h"
 
 static inline double fraction(double x) { return x - floor(x); }
@@ -99,4 +100,53 @@ vec2d* fill_poly(const vec2d* poly, int32_t len) {
   sb_free(outline);
 
   return filled;
+}
+
+void fill_poly_state_init(fill_poly_state* state, const vec2d* poly, int32_t len) {
+  state->polygon = (vec2d*)calloc(len, sizeof(vec2d));
+  state->poly_len = len;
+
+  memcpy(state->polygon, poly, len * sizeof(vec2d));
+
+  vec2d* outline = make_outline(poly, len);
+
+  qsort(outline, sb_count(outline), sizeof(vec2d), line_cmp);
+
+  state->outline = (vec2d*)calloc(sb_count(outline), sizeof(vec2d));
+  state->outline_len = sb_count(outline);
+  memcpy(state->outline, outline, sb_count(outline) * sizeof(vec2d));
+
+  sb_free(outline);
+}
+
+vec2d* fill_poly_advance(fill_poly_state* state, int32_t max_fills) {
+  vec2d* filled = NULL;
+
+  poly_hit_test test;
+  poly_hit_test_init(&test, state->polygon, state->poly_len);
+
+  for (int32_t i = state->outline_idx; i < state->outline_len - 1; i++) {
+    vec2d p = state->outline[i];
+    vec2d n = state->outline[i + 1];
+
+    if (p.y == n.y) {
+      for (double x = p.x + 1.0 + state->x; x < n.x; x += 1.0) {
+        if (poly_hit_test_check(&test, x, p.y)) {
+          vec2d in = {.x = x, .y = p.y};
+          sb_push(filled, in);
+        }
+
+        state->x++;
+      }
+    }
+
+    state->x = 0.0;
+  }
+
+
+  for (int32_t i = 0; i < state->outline_len; i++) {
+    sb_push(filled, state->outline[i]);
+  }
+
+  poly_hit_test_destroy(&test);
 }

@@ -24,7 +24,7 @@ vec2d mercator_to_tile(double x, double y, int32_t zoom, int32_t tile_size) {
   const double px = (x + MERCATOR_SHIFT_ORIGIN) / reso;
   const double py = (-y + MERCATOR_SHIFT_ORIGIN) / reso;
 
-  return (vec2d){.x = ceil(px / size) - 1.0, .y = ceil(py / size) - 1.0};
+  return (vec2d){.x = px / size, .y = py / size};
 }
 
 bounding_boxd tile_to_mercator(int32_t x, int32_t y, int32_t z,

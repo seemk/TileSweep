@@ -48,8 +48,9 @@ static const vec2d concave1[] = {{5.5, 5.5},   {15.5, 10.5}, {25.5, 4.5},
                                  {20.5, 11.5}, {25.5, 18.5}, {14.5, 14.5},
                                  {4.5, 20.5},  {10.5, 14.5}};
 static const vec2d convex1[] = {{0.5, 0.5}, {5.5, 0.5}, {5.5, 5.5}, {0.5, 5.5}};
-static const vec2d convex2[] = {
-    {5.5, 5.5}, {10.5, 5.5}, {10.5, 10.5}, {5.5, 10.5}};
+static const vec2d convex2[] = {{5.5, 5.5}, {10.5, 5.5}, {10.5, 10.5}, {5.5, 10.5}};
+static const vec2d convex3[] = {{4654.5, 2450.5}, {4654.5, 2451.5}, {4655.5, 2450.5}};
+
 static const vec2d singular = {5.5, 5.5};
 
 static const vec2d convex1_expected[] = {
@@ -70,6 +71,11 @@ static const vec2d convex2_expected[] = {
     {5.5, 10.5}, {6.5, 10.5}, {7.5, 10.5}, {8.5, 10.5}, {9.5, 10.5},
     {10.5, 10.5}};
 
+static const vec2d convex3_expected[] = {
+  {4654.5, 2450.5}, {4654.5, 2450.5},
+  {4655.5, 2450.5}, {4654.5, 2451.5}
+};
+
 typedef struct {
   const vec2d* poly;
   int32_t poly_len;
@@ -85,7 +91,8 @@ fill_test tests[] = {
   {&singular, 1, &singular, 1, 5, "singular"},
   {convex2, countof(convex2), convex2_expected, countof(convex2_expected), 3},
   {convex2, countof(convex2), convex2_expected, countof(convex2_expected), 1},
-  {convex2, countof(convex2), convex2_expected, countof(convex2_expected), 40}
+  {convex2, countof(convex2), convex2_expected, countof(convex2_expected), 40},
+  {convex3, countof(convex3), convex3_expected, countof(convex3_expected), 5}
 };
 
 static const char* poly_fill_stateful(const vec2d* poly, int32_t poly_len,

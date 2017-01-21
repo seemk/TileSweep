@@ -8,7 +8,8 @@
 #include "stretchy_buffer.h"
 #include "tl_math.h"
 
-static inline double fraction(double x) { return x - floor(x); }
+static inline double frac_pos(double x) { return x - floor(x); }
+static inline double frac_neg(double x) { return 1.0 - x + floor(x); }
 
 void raycast(vec2d begin, vec2d end, vec2d** out) {
   const double dist_x = end.x - begin.x;
@@ -20,11 +21,14 @@ void raycast(vec2d begin, vec2d end, vec2d** out) {
   const double delta_x = dist_x == 0 ? DBL_MAX : step_x / dist_x;
   const double delta_y = dist_y == 0 ? DBL_MAX : step_y / dist_y;
 
-  double tmax_x = delta_x * (1.0 - fraction(begin.x));
-  double tmax_y = delta_y * (1.0 - fraction(begin.y));
+  double tmax_x = step_x > 0.0 ? delta_x * frac_neg(begin.x) : delta_x * frac_pos(begin.x);
+  double tmax_y = step_y > 0.0 ? delta_y * frac_neg(begin.y) : delta_y * frac_pos(begin.y);
 
-  double x = begin.x;
-  double y = begin.y;
+  double x = floor(begin.x);
+  double y = floor(begin.y);
+
+  vec2d initial = {.x = x, .y = y};
+  sb_push(*out, initial);
 
   for (;;) {
     if (tmax_x < tmax_y) {
@@ -35,11 +39,11 @@ void raycast(vec2d begin, vec2d end, vec2d** out) {
       y += step_y;
     }
 
-    vec2d p = {.x = x, .y = y};
+    if (tmax_x > 1.0 && tmax_y > 1.0) break;
 
+    vec2d p = {.x = x, .y = y};
     sb_push(*out, p);
 
-    if (fabs(tmax_x) >= 1.0 && fabs(tmax_y) >= 1.0) break;
   }
 }
 

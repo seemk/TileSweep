@@ -173,17 +173,16 @@ static void* render_tile_background(void* arg, const task_extra_info* extra) {
 }
 
 static void* calculate_tiles(void* arg, const task_extra_info* extra) {
-  collision_check_job* job = (collision_check_job*)arg;
+  tile_calc_job* job = (tile_calc_job*)arg;
   tilelite_shared_ctx* shared = (tilelite_shared_ctx*)job->user;
 
-  vec2i* tiles = calc_tiles(job);
-  tl_log("tile calc (%d %d, %d %d) job finished; tile count: %d", job->x_start,
-         job->y_start, job->x_end, job->y_end, sb_count(tiles));
+  int32_t num_tiles = 0;
+  vec2i* tiles = calc_tiles(job, &num_tiles);
 
   prerender_job_stats* stats = job->stats;
-  atomic_fetch_add(&stats->num_tilecoords, sb_count(tiles));
+  atomic_fetch_add(&stats->num_tilecoords, num_tiles);
 
-  for (int32_t i = 0; i < sb_count(tiles); i++) {
+  for (int32_t i = 0; i < num_tiles; i++) {
     vec2i t = tiles[i];
     tile_render_args* render_args =
         (tile_render_args*)calloc(1, sizeof(tile_render_args));
@@ -199,11 +198,17 @@ static void* calculate_tiles(void* arg, const task_extra_info* extra) {
     taskpool_post(shared->task_pool, tsk, TP_MED);
   }
 
-  atomic_fetch_sub(&stats->indice_calcs_remain, 1);
+  if (job->fill_state.finished) {
+    atomic_fetch_sub(&stats->indice_calcs_remain, 1);
+    tl_log("tile calc (id=%d, zoom=%d) job finished", job->id, job->zoom);
 
-  sb_free(tiles);
-  free(job->tile_coordinates);
-  free(job);
+    fill_poly_state_destroy(&job->fill_state);
+    free(job);
+  } else {
+    taskpool_post(shared->task_pool, task_create(calculate_tiles, job), TP_LOW);
+  }
+
+  free(tiles);
 
   return NULL;
 }
@@ -214,9 +219,9 @@ static void* setup_prerender(void* arg, const task_extra_info* info) {
   tl_log("setting up prerender. min_zoom: %d, max_zoom %d, tile_size: %d",
          req->min_zoom, req->max_zoom, req->tile_size);
 
-  collision_check_job** jobs = make_collision_check_jobs(
-      req->coordinates, req->num_coordinates, req->min_zoom, req->max_zoom,
-      req->tile_size, 4096);
+  tile_calc_job** jobs =
+      make_tile_calc_jobs(req->coordinates, req->num_coordinates, req->min_zoom,
+                          req->max_zoom, req->tile_size, 8096);
 
   const uint64_t job_id = atomic_fetch_add(&shared->job_id_counter, 1);
   const int32_t num_tilecoord_jobs = sb_count(jobs);
@@ -226,7 +231,7 @@ static void* setup_prerender(void* arg, const task_extra_info* info) {
   tilelite_stats_add_prerender(shared->stats, stats);
 
   for (int32_t j = 0; j < num_tilecoord_jobs; j++) {
-    collision_check_job* job = jobs[j];
+    tile_calc_job* job = jobs[j];
     job->id = req->id;
     job->user = req->user;
     job->stats = stats;

@@ -16,7 +16,7 @@ static inline vec2d pixel_to_meter(double x, double y, double zoom,
                  .y = y * reso - MERCATOR_SHIFT_ORIGIN};
 }
 
-vec2i mercator_to_tile(double x, double y, int32_t zoom, int32_t tile_size) {
+vec2d mercator_to_tile(double x, double y, int32_t zoom, int32_t tile_size) {
   assert(tile_size > 0 && zoom >= 0);
   const double size = (double)tile_size;
   const double reso = resolution(zoom, size);
@@ -24,8 +24,7 @@ vec2i mercator_to_tile(double x, double y, int32_t zoom, int32_t tile_size) {
   const double px = (x + MERCATOR_SHIFT_ORIGIN) / reso;
   const double py = (-y + MERCATOR_SHIFT_ORIGIN) / reso;
 
-  return (vec2i){.x = (int32_t)ceil(px / size) - 1,
-                 .y = (int32_t)ceil(py / size) - 1};
+  return (vec2d){.x = ceil(px / size) - 1.0, .y = ceil(py / size) - 1.0};
 }
 
 bounding_boxd tile_to_mercator(int32_t x, int32_t y, int32_t z,

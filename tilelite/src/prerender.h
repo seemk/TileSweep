@@ -1,24 +1,19 @@
 #pragma once
 
 #include <stddef.h>
-#include "tl_math.h"
+#include "poly_fill.h"
 #include "stats.h"
+#include "tl_math.h"
 
 typedef struct {
-  vec2i top_left;
-  vec2i bot_right;
   int32_t id;
   int32_t tile_size;
-  int32_t x_start;
-  int32_t y_start;
-  int32_t x_end;
-  int32_t y_end;
   int32_t zoom;
-  int32_t num_tile_coordinates;
-  vec2i* tile_coordinates;
-  void* user;
+  int32_t fill_limit;
+  fill_poly_state fill_state;
   prerender_job_stats* stats;
-} collision_check_job;
+  void* user;
+} tile_calc_job;
 
 typedef struct {
   int64_t id;
@@ -30,7 +25,8 @@ typedef struct {
   void* user;
 } prerender_req;
 
-collision_check_job** make_collision_check_jobs(
-    const vec2d* coordinates, int32_t num_coordinates, int32_t min_zoom,
-    int32_t max_zoom, int32_t tile_size, int32_t job_check_limit);
-vec2i* calc_tiles(const collision_check_job* job);
+tile_calc_job** make_tile_calc_jobs(const vec2d* coordinates,
+                                    int32_t num_coordinates, int32_t min_zoom,
+                                    int32_t max_zoom, int32_t tile_size,
+                                    int32_t tiles_per_job);
+vec2i* calc_tiles(tile_calc_job* job, int32_t* count);

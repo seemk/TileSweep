@@ -130,3 +130,8 @@ vec2d* fill_poly_advance(fill_poly_state* state, int32_t max_fills) {
 
   return filled;
 }
+
+void fill_poly_state_destroy(fill_poly_state* state) {
+  free(state->polygon);
+  free(state->outline);
+}

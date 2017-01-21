@@ -3,153 +3,77 @@
 #include <limits.h>
 #include <math.h>
 #include <string.h>
-#include "poly_hit_test.h"
 #include "stretchy_buffer.h"
 
-collision_check_job** make_collision_check_jobs(
-    const vec2d* coordinates, int32_t num_coordinates, int32_t min_zoom,
-    int32_t max_zoom, int32_t tile_size, int32_t job_check_limit) {
-  assert(num_coordinates > 2);
+static int32_t exists(const vec2d* points, int32_t len, vec2d p) {
+  for (int32_t i = 0; i < len; i++) {
+    vec2d e = points[i];
+    if (p.x == e.x && p.y == e.y) {
+      return 1;
+    }
+  }
 
+  return 0;
+}
+
+tile_calc_job** make_tile_calc_jobs(const vec2d* coordinates,
+                                    int32_t num_coordinates, int32_t min_zoom,
+                                    int32_t max_zoom, int32_t tile_size,
+                                    int32_t tiles_per_job) {
   if (num_coordinates < 3) {
     return NULL;
   }
 
-  collision_check_job** jobs = NULL;
+  tile_calc_job** jobs = NULL;
   for (int32_t z = min_zoom; z <= max_zoom; z++) {
-    vec2i* tile_coords = NULL;
+    vec2d* tile_polygon = NULL;
 
     for (int32_t i = 0; i < num_coordinates; i++) {
       vec2d mercator_pt = coordinates[i];
-      vec2i tile = mercator_to_tile(mercator_pt.x, mercator_pt.y, z, tile_size);
+      vec2d tile = mercator_to_tile(mercator_pt.x, mercator_pt.y, z, tile_size);
+      tile.x += 0.5;
+      tile.y += 0.5;
 
-      int already_exists = 0;
-      for (int32_t j = 0; j < sb_count(tile_coords); j++) {
-        vec2i existing = tile_coords[j];
-        if (tile.x == existing.x && tile.y == existing.y) {
-          already_exists = 1;
-          break;
-        }
-      }
-
-      if (!already_exists) {
-        sb_push(tile_coords, tile);
+      if (!exists(tile_polygon, sb_count(tile_polygon), tile)) {
+        sb_push(tile_polygon, tile);
       }
     }
 
-    vec2i top_left = {.x = INT32_MAX, .y = INT32_MAX};
-    vec2i bot_right = {.x = INT32_MIN, .y = INT32_MIN};
+    tile_calc_job* job = (tile_calc_job*)calloc(1, sizeof(tile_calc_job));
+    job->tile_size = tile_size;
+    job->zoom = z;
+    job->fill_limit = tiles_per_job;
 
-    for (int32_t i = 0; i < sb_count(tile_coords); i++) {
-      vec2i pt = tile_coords[i];
+    fill_poly_state_init(&job->fill_state, tile_polygon,
+                         sb_count(tile_polygon));
 
-      if (pt.x < top_left.x) top_left.x = pt.x;
-      if (pt.y < top_left.y) top_left.y = pt.y;
-      if (pt.x > bot_right.x) bot_right.x = pt.x;
-      if (pt.y > bot_right.y) bot_right.y = pt.y;
-    }
-
-    assert(top_left.x != INT32_MAX && top_left.y != INT32_MAX &&
-           bot_right.x != INT32_MIN && bot_right.y != INT32_MIN);
-
-    int32_t w = bot_right.x - top_left.x;
-    int32_t h = bot_right.y - top_left.y;
-
-    if (w <= 0) w = 1;
-    if (h <= 0) h = 1;
-
-    const int32_t num_jobs =
-        (int32_t)ceil((double)(w * h) / (double)job_check_limit);
-
-    assert(num_jobs > 0);
-
-    const int32_t num_poly_tiles = sb_count(tile_coords);
-    for (int32_t i = 0; i < num_jobs - 1; i++) {
-      int32_t start_index = job_check_limit * i;
-      int32_t end_index = job_check_limit * (i + 1) - 1;
-      int32_t tx = end_index % w;
-      int32_t ty = end_index / w;
-      collision_check_job* job =
-          (collision_check_job*)calloc(1, sizeof(collision_check_job));
-      job->top_left = top_left;
-      job->bot_right = bot_right;
-      job->tile_size = tile_size;
-      job->x_start = top_left.x + (start_index % w);
-      job->y_start = top_left.y + (start_index / w);
-      job->x_end = top_left.x + (end_index % w);
-      job->y_end = top_left.y + (end_index / w);
-      job->zoom = z;
-      job->num_tile_coordinates = num_poly_tiles;
-      job->tile_coordinates = (vec2i*)calloc(num_poly_tiles, sizeof(vec2i));
-
-      memcpy(job->tile_coordinates, tile_coords,
-             num_poly_tiles * sizeof(vec2i));
-
-      sb_push(jobs, job);
-    }
-
-    const int32_t last_job_idx = job_check_limit * (num_jobs - 1);
-    collision_check_job* last =
-        (collision_check_job*)calloc(1, sizeof(collision_check_job));
-    last->top_left = top_left;
-    last->bot_right = bot_right;
-    last->tile_size = tile_size;
-    last->x_start = top_left.x + last_job_idx % w;
-    last->y_start = top_left.y + last_job_idx / w;
-    last->x_end = bot_right.x;
-    last->y_end = bot_right.y;
-    last->zoom = z;
-    last->num_tile_coordinates = num_poly_tiles;
-    last->tile_coordinates = (vec2i*)calloc(num_poly_tiles, sizeof(vec2i));
-
-    memcpy(last->tile_coordinates, tile_coords, num_poly_tiles * sizeof(vec2i));
-
-    sb_push(jobs, last);
-    sb_free(tile_coords);
+    sb_push(jobs, job);
+    sb_free(tile_polygon);
   }
 
   return jobs;
 }
 
-vec2i* calc_tiles(const collision_check_job* job) {
-  vec2i* tiles = NULL;
+vec2i* calc_tiles(tile_calc_job* job, int32_t* count) {
+  vec2d* centered_tiles = fill_poly_advance(&job->fill_state, job->fill_limit);
 
-  if (job->num_tile_coordinates == 1) {
-    sb_push(tiles, job->tile_coordinates[0]);
-    return tiles;
+  const int32_t num_tiles = sb_count(centered_tiles);
+  *count = num_tiles;
+
+  if (num_tiles <= 0) {
+    sb_free(centered_tiles);
+    return NULL;
   }
 
-  poly_hit_test test_ctx;
-  poly_hit_test_init(&test_ctx, job->tile_coordinates,
-                     job->num_tile_coordinates);
+  vec2i* tiles = (vec2i*)calloc(num_tiles, sizeof(vec2i));
 
-  for (int32_t y = job->y_start; y <= job->y_end; y++) {
+  for (int32_t i = 0; i < num_tiles; i++) {
+    double x = centered_tiles[i].x - 0.5;
+    double y = centered_tiles[i].y - 0.5;
 
-    int32_t x_begin = job->top_left.x;
-    int32_t x_end = job->bot_right.x;
-
-    if (y == job->y_start) {
-      x_begin = job->x_start;
-    } else if (y == job->y_end) {
-      x_end = job->x_end;
-    }
-
-    for (int32_t x = x_begin; x <= x_end; x++) {
-      vec2i pt = {.x = x, .y = y};
-
-      int inside =
-          poly_hit_test_check(&test_ctx, pt) ||
-          poly_hit_test_check(&test_ctx, (vec2i){.x = x + 1, .y = y}) ||
-          poly_hit_test_check(&test_ctx, (vec2i){.x = x, .y = y + 1}) ||
-          poly_hit_test_check(&test_ctx, (vec2i){.x = x + 1, .y = y + 1});
-
-      if (inside) {
-        sb_push(tiles, pt);
-      }
-    }
+    tiles[i].x = (int32_t)x;
+    tiles[i].y = (int32_t)y;
   }
-
-  poly_hit_test_destroy(&test_ctx);
 
   return tiles;
 }

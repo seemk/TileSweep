@@ -75,5 +75,7 @@ vec2i* calc_tiles(tile_calc_job* job, int32_t* count) {
     tiles[i].y = (int32_t)y;
   }
 
+  sb_free(centered_tiles);
+
   return tiles;
 }

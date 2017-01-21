@@ -2,7 +2,6 @@
 #include <assert.h>
 #include <float.h>
 #include <math.h>
-#include <stdio.h>
 #include <string.h>
 #include "poly_hit_test.h"
 #include "stretchy_buffer.h"
@@ -56,6 +55,28 @@ static int line_cmp(const void* a, const void* b) {
   }
 
   return p1->y - p2->y;
+}
+
+static vec2d* unique(vec2d* a, int32_t len) {
+  vec2d* uniques = NULL;
+  
+  if (len == 0) {
+    return uniques;
+  }
+
+  qsort(a, len, sizeof(vec2d), line_cmp);
+
+  sb_push(uniques, a[0]);
+  for (int32_t i = 1; i < len - 1; i++) {
+    vec2d p = a[i - 1];
+    vec2d n = a[i];
+
+    if (p.x != n.x || p.y != n.y) {
+      sb_push(uniques, n);
+    }
+  }
+
+  return uniques;
 }
 
 static vec2d* make_outline(const vec2d* poly, int32_t len) {
@@ -114,7 +135,9 @@ vec2d* fill_poly_advance(fill_poly_state* state, int32_t max_fills) {
 
         if (sb_count(filled) >= max_fills) {
           poly_hit_test_destroy(&test);
-          return filled;
+          vec2d* filled_unique = unique(filled, sb_count(filled));
+          sb_free(filled);
+          return filled_unique;
         }
       }
     }
@@ -128,11 +151,13 @@ vec2d* fill_poly_advance(fill_poly_state* state, int32_t max_fills) {
     sb_push(filled, state->outline[state->outline_idx++]);
   }
 
-  poly_hit_test_destroy(&test);
-
   state->finished = 1;
 
-  return filled;
+  poly_hit_test_destroy(&test);
+  vec2d* filled_unique = unique(filled, sb_count(filled));
+  sb_free(filled);
+
+  return filled_unique;
 }
 
 void fill_poly_state_destroy(fill_poly_state* state) {

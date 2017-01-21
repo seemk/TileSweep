@@ -67,7 +67,7 @@ static vec2d* unique(vec2d* a, int32_t len) {
   qsort(a, len, sizeof(vec2d), line_cmp);
 
   sb_push(uniques, a[0]);
-  for (int32_t i = 1; i < len - 1; i++) {
+  for (int32_t i = 1; i < len; i++) {
     vec2d p = a[i - 1];
     vec2d n = a[i];
 
@@ -151,12 +151,13 @@ vec2d* fill_poly_advance(fill_poly_state* state, int32_t max_fills) {
     sb_push(filled, state->outline[state->outline_idx++]);
   }
 
-  state->finished = 1;
+  if (state->outline_idx >= state->outline_len) {
+    state->finished = 1;
+  }
 
   poly_hit_test_destroy(&test);
   vec2d* filled_unique = unique(filled, sb_count(filled));
   sb_free(filled);
-
   return filled_unique;
 }
 

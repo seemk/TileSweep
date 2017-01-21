@@ -19,8 +19,10 @@ add_executable(tilelite
   tl_tile.c
   tl_math.c
   tcp.c
-  tl_write_queue.cpp
+  tl_write_queue.c
   tile_renderer.cpp
+
+  tc_queue.c
 
   poly_hit_test.c
   poly_fill.c

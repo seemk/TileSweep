@@ -2,9 +2,10 @@
 #include <assert.h>
 #include <float.h>
 #include <math.h>
+#include <stdio.h>
+#include <string.h>
 #include "poly_hit_test.h"
 #include "stretchy_buffer.h"
-#include <string.h>
 #include "tl_math.h"
 
 static inline double fraction(double x) { return x - floor(x); }
@@ -68,41 +69,10 @@ static vec2d* make_outline(const vec2d* poly, int32_t len) {
   return outline;
 }
 
-vec2d* fill_poly(const vec2d* poly, int32_t len) {
+void fill_poly_state_init(fill_poly_state* state, const vec2d* poly,
+                          int32_t len) {
   assert(len > 0);
-  vec2d* outline = make_outline(poly, len);
-  vec2d* filled = NULL;
-
-  qsort(outline, sb_count(outline), sizeof(vec2d), line_cmp);
-
-  poly_hit_test test;
-  poly_hit_test_init(&test, poly, len);
-
-  for (int32_t i = 0; i < sb_count(outline) - 1; i++) {
-    vec2d p = outline[i];
-    vec2d n = outline[i + 1];
-
-    if (p.y == n.y) {
-      for (double x = p.x + 1.0; x < n.x; x += 1.0) {
-        if (poly_hit_test_check(&test, x, p.y)) {
-          vec2d in = {.x = x, .y = p.y};
-          sb_push(filled, in);
-        }
-      }
-    }
-  }
-
-  for (int32_t i = 0; i < sb_count(outline); i++) {
-    sb_push(filled, outline[i]);
-  }
-
-  poly_hit_test_destroy(&test);
-  sb_free(outline);
-
-  return filled;
-}
-
-void fill_poly_state_init(fill_poly_state* state, const vec2d* poly, int32_t len) {
+  memset(state, 0, sizeof(fill_poly_state));
   state->polygon = (vec2d*)calloc(len, sizeof(vec2d));
   state->poly_len = len;
 
@@ -125,7 +95,7 @@ vec2d* fill_poly_advance(fill_poly_state* state, int32_t max_fills) {
   poly_hit_test test;
   poly_hit_test_init(&test, state->polygon, state->poly_len);
 
-  for (int32_t i = state->outline_idx; i < state->outline_len - 1; i++) {
+  for (int32_t i = state->inner_fill_idx; i < state->outline_len - 1; i++) {
     vec2d p = state->outline[i];
     vec2d n = state->outline[i + 1];
 
@@ -137,16 +107,26 @@ vec2d* fill_poly_advance(fill_poly_state* state, int32_t max_fills) {
         }
 
         state->x++;
+
+        if (sb_count(filled) >= max_fills) {
+          poly_hit_test_destroy(&test);
+          return filled;
+        }
       }
     }
 
     state->x = 0.0;
+    state->inner_fill_idx++;
   }
 
-
-  for (int32_t i = 0; i < state->outline_len; i++) {
-    sb_push(filled, state->outline[i]);
+  while (sb_count(filled) < max_fills &&
+         state->outline_idx < state->outline_len) {
+    sb_push(filled, state->outline[state->outline_idx++]);
   }
 
   poly_hit_test_destroy(&test);
+
+  state->finished = 1;
+
+  return filled;
 }

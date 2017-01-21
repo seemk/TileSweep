@@ -5,7 +5,7 @@
 #include "minunit.h"
 #include "test_poly_fill.c"
 
-static char* task_queue_test() {
+static const char* task_queue_test() {
   task_queue* q = task_queue_create();
 
   task* t;
@@ -29,14 +29,14 @@ static char* task_queue_test() {
   return NULL;
 }
 
-static char* all() {
+static const char* all() {
   mu_run_test(task_queue_test);
   mu_run_test(test_poly_fill);
   return NULL;
 }
 
 int main(int argc, char** argv) {
-  char* result = all();
+  const char* result = all();
   if (result != NULL) {
     printf("%s\n", result);
   } else {

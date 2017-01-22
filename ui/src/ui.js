@@ -273,7 +273,7 @@ const ControlPanel = React.createClass({
       />
     );
 
-    const filler = "No active render jobs.";
+    const filler = <div style={{marginTop: "10px"}}>No active render jobs.</div>;
     const content = jobs.length == 0 ? filler : jobs;
 
     const outerStyle = {
@@ -289,7 +289,7 @@ const ControlPanel = React.createClass({
 
     return (
       <div style={outerStyle}>
-        <div style={{textAlign: "center", width: "100%"}}>
+        <div style={{textAlign: "center", width: "100%", fontWeight: "bold"}}>
           Active render jobs
         </div>
         <div className="list-group" style={listStyle}>
@@ -302,14 +302,14 @@ const ControlPanel = React.createClass({
   render: function() {
 
     const tileSourceButtons = [
-      {name: "All"},
-      {name: "Cached"}
+      {name: "Online tiles"},
+      {name: "Cached tiles"}
     ];
 
     return (
       <div className="row" style={{padding: "10px 0 10px 0"}}>
         <div className="col-md-2">
-          <div>
+          <div style={{"width":"100%"}}>
             <ButtonGroup buttons={tileSourceButtons}
               selectedIndex={this.state.activeRenderSourceIndex}
               onClick={this.tileSourceSelected}

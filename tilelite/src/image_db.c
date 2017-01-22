@@ -150,8 +150,10 @@ int32_t image_db_add_image(image_db* db, const image* img,
     db->inserts++;
 
     if (db->inserts >= 2048) {
+      tl_log("image db WAL checkpoint begin");
       sqlite3_wal_checkpoint_v2(db->db, NULL, SQLITE_CHECKPOINT_TRUNCATE, NULL, NULL);
       db->inserts = 0;
+      tl_log("image db WAL checkpoint done");
     }
   } else {
     tl_log("add image failed %d: %s", res, sqlite3_errstr(res));

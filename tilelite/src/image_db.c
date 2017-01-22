@@ -72,7 +72,7 @@ image_db* image_db_open(const char* db_file) {
   db->insert_position = insert_position;
   db->insert_image = insert_image;
 
-  sqlite3_busy_timeout(sqlite_db, 100);
+  sqlite3_busy_timeout(sqlite_db, 1000);
 
   return db;
 }
@@ -146,7 +146,14 @@ int32_t image_db_add_image(image_db* db, const image* img,
 
   int res = sqlite3_step(query);
 
-  if (res != SQLITE_DONE) {
+  if (res == SQLITE_DONE) {
+    db->inserts++;
+
+    if (db->inserts >= 2048) {
+      sqlite3_wal_checkpoint_v2(db->db, NULL, SQLITE_CHECKPOINT_TRUNCATE, NULL, NULL);
+      db->inserts = 0;
+    }
+  } else {
     tl_log("add image failed %d: %s", res, sqlite3_errstr(res));
   }
 

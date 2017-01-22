@@ -12,6 +12,7 @@ typedef struct {
   struct sqlite3_stmt* fetch_query;
   struct sqlite3_stmt* insert_position;
   struct sqlite3_stmt* insert_image;
+  int32_t inserts;
 } image_db;
 
 image_db* image_db_open(const char* db_file);

@@ -72,7 +72,7 @@ image_db* image_db_open(const char* db_file) {
   db->insert_position = insert_position;
   db->insert_image = insert_image;
 
-  sqlite3_busy_timeout(sqlite_db, 1000);
+  sqlite3_busy_timeout(sqlite_db, 2000);
 
   return db;
 }
@@ -149,11 +149,16 @@ int32_t image_db_add_image(image_db* db, const image* img,
   if (res == SQLITE_DONE) {
     db->inserts++;
 
-    if (db->inserts >= 2048) {
+    if (db->inserts >= 1024) {
       tl_log("image db WAL checkpoint begin");
-      sqlite3_wal_checkpoint_v2(db->db, NULL, SQLITE_CHECKPOINT_TRUNCATE, NULL, NULL);
-      db->inserts = 0;
-      tl_log("image db WAL checkpoint done");
+      int wal_res = sqlite3_wal_checkpoint_v2(
+          db->db, NULL, SQLITE_CHECKPOINT_TRUNCATE, NULL, NULL);
+      if (wal_res == SQLITE_OK) {
+        db->inserts = 0;
+        tl_log("image db WAL checkpoint done");
+      } else {
+        tl_log("image db WAL checkpoint failed: %s", sqlite3_errmsg(db->db));
+      }
     }
   } else {
     tl_log("add image failed %d: %s", res, sqlite3_errstr(res));

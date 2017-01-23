@@ -5,6 +5,32 @@
 #include <string.h>
 #include "stretchy_buffer.h"
 
+static double tile_poly_area_approx(const vec2d* poly, int32_t len) {
+  switch (len) {
+    case 0:
+      return 0;
+    case 1:
+      return 1;
+    case 2: {
+      vec2d p = poly[0];
+      vec2d n = poly[1];
+
+      if (p.y == n.y) {
+        return fabs(n.x - p.x);
+      }
+      if (p.x == n.x) {
+        return fabs(n.y - p.y);
+      }
+
+      double x = n.x - p.x;
+      double y = n.y - p.y;
+      return 1.5 * sqrtf(x * x + y * y);
+    }
+    default:
+      return poly_area(poly, len);
+  }
+}
+
 static int32_t exists(const vec2d* points, int32_t len, vec2d p) {
   for (int32_t i = 0; i < len; i++) {
     vec2d e = points[i];
@@ -38,6 +64,8 @@ tile_calc_job** make_tile_calc_jobs(const vec2d* coordinates,
     job->tile_size = tile_size;
     job->zoom = z;
     job->fill_limit = tiles_per_job;
+    job->estimated_tiles =
+        (uint64_t)tile_poly_area_approx(tile_polygon, sb_count(tile_polygon));
 
     fill_poly_state_init(&job->fill_state, tile_polygon,
                          sb_count(tile_polygon));

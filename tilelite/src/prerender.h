@@ -10,6 +10,7 @@ typedef struct {
   int32_t tile_size;
   int32_t zoom;
   int32_t fill_limit;
+  uint64_t estimated_tiles;
   fill_poly_state fill_state;
   prerender_job_stats* stats;
   void* user;

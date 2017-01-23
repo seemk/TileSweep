@@ -19,10 +19,10 @@ const PrerenderJob = React.createClass({
     return (
       <div className={classes} onClick={this.props.onClick}>
         <div>
-          Tile coordinates - {job.numTileCoordinates}
+          Zoom: {job.minZoom} - {job.maxZoom}
         </div>
         <div>
-          Tiles rendered - {job.numCurrentTiles} 
+          Tiles - {job.numCurrentTiles} / est. {job.numEstimatedTiles}
         </div>
       </div>
     );

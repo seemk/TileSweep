@@ -44,6 +44,7 @@ static inline double sign(double x) {
 vec2d mercator_to_tile(double x, double y, int32_t zoom, int32_t tile_size);
 bounding_boxd tile_to_mercator(int32_t x, int32_t y, int32_t z,
                                int32_t tile_size);
+double poly_area(const vec2d* poly, int32_t len);
 
 #ifdef __cplusplus
 }

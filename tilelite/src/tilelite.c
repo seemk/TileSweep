@@ -226,8 +226,17 @@ static void* setup_prerender(void* arg, const task_extra_info* info) {
   const uint64_t job_id = atomic_fetch_add(&shared->job_id_counter, 1);
   const int32_t num_tilecoord_jobs = sb_count(jobs);
 
+  uint64_t tile_estimate = 0;
+  for (int32_t i = 0; i < num_tilecoord_jobs; i++) {
+    tile_estimate += jobs[i]->estimated_tiles;
+  }
+
   prerender_job_stats* stats = prerender_job_stats_create(
       req->coordinates, req->num_coordinates, job_id, num_tilecoord_jobs);
+  stats->estimated_tiles = tile_estimate;
+  stats->min_zoom = req->min_zoom;
+  stats->max_zoom = req->max_zoom;
+
   tilelite_stats_add_prerender(shared->stats, stats);
 
   for (int32_t j = 0; j < num_tilecoord_jobs; j++) {
@@ -497,6 +506,9 @@ static int get_status(h2o_handler_t* h, h2o_req_t* req) {
     json_object_set_number(prerender_json, "numTileCoordinates",
                            num_tilecoords);
     json_object_set_number(prerender_json, "numCurrentTiles", current_tiles);
+    json_object_set_number(prerender_json, "numEstimatedTiles", job_stats->estimated_tiles);
+    json_object_set_number(prerender_json, "minZoom", job_stats->min_zoom);
+    json_object_set_number(prerender_json, "maxZoom", job_stats->max_zoom);
 
     json_object_set_value(prerender_json, "boundary", json_value_init_array());
     JSON_Array* boundary_json =

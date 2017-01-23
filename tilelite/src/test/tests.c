@@ -4,6 +4,7 @@
 #include "../task_queue.h"
 #include "minunit.h"
 #include "test_poly_fill.c"
+#include "test_math.c"
 
 static const char* task_queue_test() {
   task_queue* q = task_queue_create();
@@ -32,6 +33,7 @@ static const char* task_queue_test() {
 static const char* all() {
   mu_run_test(task_queue_test);
   mu_run_test(test_poly_fill);
+  mu_run_test(test_math);
   return NULL;
 }
 

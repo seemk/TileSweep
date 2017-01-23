@@ -8,6 +8,9 @@
 typedef struct {
   int64_t start_time;
   uint64_t id;
+  uint64_t estimated_tiles;
+  int32_t min_zoom;
+  int32_t max_zoom;
   int32_t indice_calcs;
   atomic_ulong max_tiles;
   atomic_ulong num_tilecoords;

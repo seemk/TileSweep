@@ -122,11 +122,17 @@ taskpool* taskpool_create(int32_t threads) {
 
 void taskpool_wait(taskpool* pool, task* t, task_priority priority) {
   t->type = TASK_SINGLEWAIT;
+  assert(pthread_mutex_init(&t->lock, NULL) == 0);
+  assert(pthread_cond_init(&t->cv, NULL) == 0);
+
   pool_add_task(pool, t, priority);
   pthread_mutex_lock(&t->lock);
   sem_post(pool->sema);
   pthread_cond_wait(&t->cv, &t->lock);
   pthread_mutex_unlock(&t->lock);
+
+  pthread_mutex_destroy(&t->lock);
+  pthread_cond_destroy(&t->cv);
 }
 
 void taskpool_post(taskpool* pool, task* t, task_priority priority) {

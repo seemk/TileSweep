@@ -2,12 +2,12 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include "task.h"
-#include "task_queue.h"
+#include "tc_queue.h"
 
 typedef enum { TP_HIGH, TP_MED, TP_LOW, TP_COUNT } task_priority;
 
 typedef struct {
-  task_queue queue;
+  tc_queue queue;
   pthread_mutex_t lock;
 } pool_queue;
 

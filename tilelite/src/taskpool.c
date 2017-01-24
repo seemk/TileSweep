@@ -14,7 +14,7 @@ typedef struct {
 
 int pool_queue_pop(pool_queue* q, task** t) {
   pthread_mutex_lock(&q->lock);
-  int res = task_queue_pop(&q->queue, t);
+  int res = tc_queue_pop(&q->queue, t);
   pthread_mutex_unlock(&q->lock);
   return res;
 }
@@ -22,7 +22,7 @@ int pool_queue_pop(pool_queue* q, task** t) {
 void pool_queue_push(pool_queue* q, task* t) {
   assert(t);
   pthread_mutex_lock(&q->lock);
-  task_queue_push(&q->queue, t);
+  tc_queue_push(&q->queue, &t);
   pthread_mutex_unlock(&q->lock);
 }
 
@@ -99,7 +99,7 @@ taskpool* taskpool_create(int32_t threads) {
     pool->queues[p] = (pool_queue*)calloc(threads, sizeof(pool_queue));
     for (int32_t i = 0; i < threads; i++) {
       pool_queue* q = &pool->queues[p][i];
-      task_queue_init(&q->queue);
+      tc_queue_init(&q->queue, sizeof(task*));
       pthread_mutex_init(&q->lock, NULL);
     }
   }

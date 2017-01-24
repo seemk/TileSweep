@@ -12,7 +12,6 @@ add_executable(tilelite
   hash/xxhash.c
   image_db.c
   task.c
-  task_queue.c
   taskpool.c
   tl_options.c
   tl_time.c
@@ -41,7 +40,7 @@ add_executable(tests
   poly_hit_test.c
   poly_fill.c
   task.c
-  task_queue.c
+  tc_queue.c
   test/tests.c
   tl_math.c
 )

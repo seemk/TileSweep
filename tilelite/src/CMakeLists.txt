@@ -33,8 +33,6 @@ add_executable(tilelite
   parg/parg.c
   prerender.c
 
-  regex/slre.c
-
   query.c
 )
 

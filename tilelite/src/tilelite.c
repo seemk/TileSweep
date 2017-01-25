@@ -8,7 +8,7 @@
 #include "image_db.h"
 #include "json/parson.h"
 #include "prerender.h"
-#include "regex/slre.h"
+#include "query.h"
 #include "stretchy_buffer.h"
 #include "taskpool.h"
 #include "tcp.h"
@@ -352,12 +352,15 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
     return 0;
   }
 
-  int32_t from_cache = 0;
-  struct slre_cap capture = {0};
-  if (slre_match("cached=(true|false)", req->path.base, req->path.len, &capture,
-                 1, 0) > 0) {
-    if (strncmp("true", capture.ptr, capture.len) == 0) {
-      from_cache = 1;
+  query_param_t params[4];
+  int32_t n_params = parse_uri_params(req->path.base, req->path.len, params, 4);
+
+  int32_t force_cache = 0;
+  for (int32_t i = 0; i < n_params; i++) {
+    const query_param_t* p = &params[i];
+    if (h2o_memis(p->query, p->query_len, H2O_STRLIT("cached")) &&
+        h2o_memis(p->value, p->value_len, H2O_STRLIT("true"))) {
+      force_cache = 1;
     }
   }
 
@@ -366,7 +369,7 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
 
   tilelite_result result = res_ok;
   int32_t existing = image_db_fetch(c->tile_db, pos_hash, t.w, t.h, &img);
-  if (!from_cache && !existing && shared->rendering_enabled) {
+  if (!force_cache && !existing && shared->rendering_enabled) {
     tile_render_task renderer_info = {
         .tile = t, .img = img, .shared = shared, .success = 0};
 
@@ -506,7 +509,8 @@ static int get_status(h2o_handler_t* h, h2o_req_t* req) {
     json_object_set_number(prerender_json, "numTileCoordinates",
                            num_tilecoords);
     json_object_set_number(prerender_json, "numCurrentTiles", current_tiles);
-    json_object_set_number(prerender_json, "numEstimatedTiles", job_stats->estimated_tiles);
+    json_object_set_number(prerender_json, "numEstimatedTiles",
+                           job_stats->estimated_tiles);
     json_object_set_number(prerender_json, "minZoom", job_stats->min_zoom);
     json_object_set_number(prerender_json, "maxZoom", job_stats->max_zoom);
 

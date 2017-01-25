@@ -11,7 +11,6 @@ typedef struct { int32_t executing_thread_idx; } task_extra_info;
 typedef void* (*task_fn)(void*, const task_extra_info*);
 
 typedef struct {
-  int32_t id;
   task_type type;
   pthread_mutex_t lock;
   pthread_cond_t cv;

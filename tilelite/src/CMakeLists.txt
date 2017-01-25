@@ -34,6 +34,8 @@ add_executable(tilelite
   prerender.c
 
   regex/slre.c
+
+  query.c
 )
 
 add_executable(tests

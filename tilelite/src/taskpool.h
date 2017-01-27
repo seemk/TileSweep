@@ -3,6 +3,7 @@
 #include <stdatomic.h>
 #include "task.h"
 #include "tc_queue.h"
+#include "tc_sema.h"
 
 typedef enum { TP_HIGH, TP_MED, TP_LOW, TP_COUNT } task_priority;
 
@@ -15,7 +16,7 @@ typedef struct {
   int num_threads;
   void* threads;
   pool_queue* queues[TP_COUNT];
-  void* sema;
+  tc_sema sema;
   atomic_int insert_idx;
 } taskpool;
 

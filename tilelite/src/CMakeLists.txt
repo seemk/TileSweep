@@ -22,6 +22,7 @@ add_executable(tilelite
   tile_renderer.cpp
 
   tc_queue.c
+  tc_sema.c
 
   poly_hit_test.c
   poly_fill.c

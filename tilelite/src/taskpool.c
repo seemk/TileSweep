@@ -1,6 +1,5 @@
 #include "taskpool.h"
 #include <assert.h>
-#include <semaphore.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "tl_log.h"
@@ -9,7 +8,7 @@ typedef struct {
   int thread_num;
   taskpool* pool;
   pthread_t id;
-  sem_t* sema;
+  tc_sema* sema;
 } pool_thread_info;
 
 int pool_queue_pop(pool_queue* q, task** t) {
@@ -51,7 +50,7 @@ static void* pool_task(void* arg) {
   const task_extra_info extra = {.executing_thread_idx = info->thread_num};
 
   for (;;) {
-    sem_wait(info->sema);
+    tc_sema_wait(info->sema);
 
     task* t = NULL;
 
@@ -75,7 +74,7 @@ static void* pool_task(void* arg) {
         }
         case TASK_MULTIWAIT: {
           t->execute(t->arg, &extra);
-          sem_post(t->waitall_sema);
+          tc_sema_post(t->waitall_sema, 1);
           break;
         };
         default:
@@ -93,7 +92,6 @@ taskpool* taskpool_create(int32_t threads) {
   taskpool* pool = (taskpool*)calloc(1, sizeof(taskpool));
   pool->num_threads = threads;
   pool->threads = calloc(threads, sizeof(pool_thread_info));
-  pool->sema = calloc(1, sizeof(sem_t));
 
   for (int32_t p = TP_HIGH; p < TP_COUNT; p++) {
     pool->queues[p] = (pool_queue*)calloc(threads, sizeof(pool_queue));
@@ -104,7 +102,7 @@ taskpool* taskpool_create(int32_t threads) {
     }
   }
 
-  sem_init(pool->sema, 0, 0);
+  tc_sema_init(&pool->sema, 0);
   atomic_init(&pool->insert_idx, 0);
 
   pool_thread_info* pool_threads = (pool_thread_info*)pool->threads;
@@ -113,7 +111,7 @@ taskpool* taskpool_create(int32_t threads) {
     pool_thread_info* t = &pool_threads[i];
     t->thread_num = i;
     t->pool = pool;
-    t->sema = pool->sema;
+    t->sema = &pool->sema;
     pthread_create(&t->id, NULL, pool_task, t);
   }
 
@@ -127,7 +125,7 @@ void taskpool_wait(taskpool* pool, task* t, task_priority priority) {
 
   pool_add_task(pool, t, priority);
   pthread_mutex_lock(&t->lock);
-  sem_post(pool->sema);
+  tc_sema_post(&pool->sema, 1);
   pthread_cond_wait(&t->cv, &t->lock);
   pthread_mutex_unlock(&t->lock);
 
@@ -138,30 +136,31 @@ void taskpool_wait(taskpool* pool, task* t, task_priority priority) {
 void taskpool_post(taskpool* pool, task* t, task_priority priority) {
   t->type = TASK_FIREFORGET;
   pool_add_task(pool, t, priority);
-  sem_post(pool->sema);
+  tc_sema_post(&pool->sema, 1);
 }
 
 void taskpool_wait_all(taskpool* pool, task** tasks, int32_t count,
                        task_priority priority) {
-  sem_t wait_sema;
-  sem_init(&wait_sema, 0, 0);
+  tc_sema wait_sema;
+  tc_sema_init(&wait_sema, 0);
 
   for (int32_t i = 0; i < count; i++) {
     task* t = tasks[i];
     t->type = TASK_MULTIWAIT;
     t->waitall_sema = &wait_sema;
     pool_add_task(pool, t, priority);
-    sem_post(pool->sema);
   }
+
+  tc_sema_post(&pool->sema, count);
 
   int32_t left = count;
 
   while (left > 0) {
-    sem_wait(&wait_sema);
+    tc_sema_wait(&wait_sema);
     left--;
   }
 
-  sem_destroy(&wait_sema);
+  tc_sema_deinit(&wait_sema);
 }
 
 void taskpool_destroy(taskpool* pool) {
@@ -172,6 +171,5 @@ void taskpool_destroy(taskpool* pool) {
   }
 
   free(pool->threads);
-  free(pool->sema);
   free(pool);
 }

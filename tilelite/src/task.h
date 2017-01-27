@@ -1,8 +1,8 @@
 #pragma once
 
 #include <pthread.h>
-#include <semaphore.h>
 #include <stdint.h>
+#include "tc_sema.h"
 
 typedef enum { TASK_FIREFORGET, TASK_SINGLEWAIT, TASK_MULTIWAIT } task_type;
 
@@ -16,7 +16,7 @@ typedef struct {
   pthread_cond_t cv;
   task_fn execute;
   void* arg;
-  sem_t* waitall_sema;
+  tc_sema* waitall_sema;
 } task;
 
 task* task_create(task_fn execute, void* arg);

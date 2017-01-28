@@ -308,7 +308,7 @@ const ControlPanel = React.createClass({
 
     return (
       <div className="row" style={{padding: "10px 0 10px 0"}}>
-        <div className="col-md-2">
+        <div className="col-md-4 col-xl-2">
           <div style={{"width":"100%"}}>
             <ButtonGroup buttons={tileSourceButtons}
               selectedIndex={this.state.activeRenderSourceIndex}
@@ -376,7 +376,7 @@ const ControlPanel = React.createClass({
           {this.renderError()}
           {this.renderJobList()}
         </div>
-        <div className="col-md-10">
+        <div className="col-md-8 col-xl-10">
           <div id="map" className="map">
           </div>
         </div>

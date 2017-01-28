@@ -499,15 +499,11 @@ static int get_status(h2o_handler_t* h, h2o_req_t* req) {
 
     const double max_tiles = (double)atomic_load_explicit(&job_stats->max_tiles,
                                                           memory_order_relaxed);
-    const double num_tilecoords = (double)atomic_load_explicit(
-        &job_stats->num_tilecoords, memory_order_relaxed);
     const double current_tiles = (double)atomic_load_explicit(
         &job_stats->current_tiles, memory_order_relaxed);
 
     json_object_set_number(prerender_json, "id", job_stats->id);
     json_object_set_number(prerender_json, "maxTiles", max_tiles);
-    json_object_set_number(prerender_json, "numTileCoordinates",
-                           num_tilecoords);
     json_object_set_number(prerender_json, "numCurrentTiles", current_tiles);
     json_object_set_number(prerender_json, "numEstimatedTiles",
                            job_stats->estimated_tiles);

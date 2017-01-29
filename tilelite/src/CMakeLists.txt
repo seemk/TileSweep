@@ -37,6 +37,10 @@ add_executable(tilelite
   query.c
 )
 
+if (NOT WITH_MAPNIK)
+  target_compile_definitions(tilelite PRIVATE TC_NO_MAPNIK=1)
+endif (NOT WITH_MAPNIK)
+
 add_executable(tests
   poly_hit_test.c
   poly_fill.c

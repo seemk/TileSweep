@@ -9,8 +9,6 @@ extern "C" {
 
 typedef struct tile_renderer tile_renderer;
 
-int32_t register_plugins(const char* plugins_path);
-int32_t register_fonts(const char* fonts_path);
 tile_renderer* tile_renderer_create(const char* mapnik_xml_path,
                                     const char* plugins_path,
                                     const char* fonts_path);

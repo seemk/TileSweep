@@ -557,7 +557,11 @@ int main(int argc, char** argv) {
 
   tilelite_shared_ctx* shared =
       (tilelite_shared_ctx*)calloc(1, sizeof(tilelite_shared_ctx));
+#if TC_NO_MAPNIK
+  shared->rendering_enabled = 0;
+#else
   shared->rendering_enabled = strcmp(opt.rendering, "1") == 0;
+#endif
   shared->num_task_threads = cpu_core_count();
   shared->num_http_threads = shared->num_task_threads;
   shared->task_pool = taskpool_create(shared->num_task_threads);

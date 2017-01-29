@@ -1,4 +1,21 @@
 #include "tile_renderer.h"
+#include "tl_log.h"
+#include "tl_math.h"
+
+#if TC_NO_MAPNIK
+
+struct tile_renderer {};
+
+tile_renderer* tile_renderer_create(const char*, const char*, const char*) {
+  return nullptr;
+}
+
+int32_t render_tile(tile_renderer*, const tl_tile*, image*) { return 0; }
+
+void tile_renderer_destroy(tile_renderer*) {}
+
+#else
+
 #include <mapnik/agg_renderer.hpp>
 #include <mapnik/datasource_cache.hpp>
 #include <mapnik/image.hpp>
@@ -8,8 +25,6 @@
 #include <mapnik/well_known_srs.hpp>
 #include <memory>
 #include <mutex>
-#include "tl_log.h"
-#include "tl_math.h"
 
 struct tile_renderer {
   tile_renderer(std::unique_ptr<mapnik::Map> map) : map(std::move(map)) {}
@@ -79,3 +94,5 @@ int32_t render_tile(tile_renderer* renderer, const tl_tile* tile,
 
   return 1;
 }
+
+#endif

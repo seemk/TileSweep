@@ -11,7 +11,7 @@ add_executable(tilelite
   tilelite.c
   hash/xxhash.c
   image_db.c
-  task.c
+  tc_task.c
   taskpool.c
   tl_options.c
   tl_time.c
@@ -44,7 +44,6 @@ endif (NOT WITH_MAPNIK)
 add_executable(tests
   poly_hit_test.c
   poly_fill.c
-  task.c
   tc_queue.c
   test/tests.c
   tl_math.c

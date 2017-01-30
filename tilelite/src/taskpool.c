@@ -11,28 +11,28 @@ typedef struct {
   tc_sema* sema;
 } pool_thread_info;
 
-int pool_queue_pop(pool_queue* q, task** t) {
+int pool_queue_pop(pool_queue* q, tc_task** t) {
   pthread_mutex_lock(&q->lock);
   int res = tc_queue_pop(&q->queue, t);
   pthread_mutex_unlock(&q->lock);
   return res;
 }
 
-void pool_queue_push(pool_queue* q, task* t) {
+void pool_queue_push(pool_queue* q, tc_task* t) {
   assert(t);
   pthread_mutex_lock(&q->lock);
   tc_queue_push(&q->queue, &t);
   pthread_mutex_unlock(&q->lock);
 }
 
-static void pool_add_task(taskpool* pool, task* t, task_priority priority) {
+static void pool_add_task(taskpool* pool, tc_task* t, task_priority priority) {
   assert(priority >= 0 && priority < TP_COUNT);
   int queue_idx = atomic_fetch_add(&pool->insert_idx, 1) % pool->num_threads;
   pool_queue* q = &pool->queues[priority][queue_idx];
   pool_queue_push(q, t);
 }
 
-static int32_t get_task(taskpool* pool, task** t) {
+static int32_t get_task(taskpool* pool, tc_task** t) {
   for (int32_t p = TP_HIGH; p < TP_COUNT; p++) {
     for (int32_t i = 0; i < pool->num_threads; i++) {
       if (pool_queue_pop(&pool->queues[p][i], t)) {
@@ -47,12 +47,12 @@ static int32_t get_task(taskpool* pool, task** t) {
 static void* pool_task(void* arg) {
   pool_thread_info* info = (pool_thread_info*)arg;
 
-  const task_extra_info extra = {.executing_thread_idx = info->thread_num};
+  const tc_task_extra_info extra = {.executing_thread_idx = info->thread_num};
 
   for (;;) {
     tc_sema_wait(info->sema);
 
-    task* t = NULL;
+    tc_task* t = NULL;
 
     if (get_task(info->pool, &t)) {
       assert(t);
@@ -62,7 +62,7 @@ static void* pool_task(void* arg) {
       switch (t->type) {
         case TASK_FIREFORGET: {
           t->execute(t->arg, &extra);
-          task_destroy(t);
+          tc_task_destroy(t);
           break;
         }
         case TASK_SINGLEWAIT: {
@@ -97,7 +97,7 @@ taskpool* taskpool_create(int32_t threads) {
     pool->queues[p] = (pool_queue*)calloc(threads, sizeof(pool_queue));
     for (int32_t i = 0; i < threads; i++) {
       pool_queue* q = &pool->queues[p][i];
-      tc_queue_init(&q->queue, sizeof(task*));
+      tc_queue_init(&q->queue, sizeof(tc_task*));
       pthread_mutex_init(&q->lock, NULL);
     }
   }
@@ -118,7 +118,7 @@ taskpool* taskpool_create(int32_t threads) {
   return pool;
 }
 
-void taskpool_wait(taskpool* pool, task* t, task_priority priority) {
+void taskpool_wait(taskpool* pool, tc_task* t, task_priority priority) {
   t->type = TASK_SINGLEWAIT;
   assert(pthread_mutex_init(&t->lock, NULL) == 0);
   assert(pthread_cond_init(&t->cv, NULL) == 0);
@@ -133,19 +133,19 @@ void taskpool_wait(taskpool* pool, task* t, task_priority priority) {
   pthread_cond_destroy(&t->cv);
 }
 
-void taskpool_post(taskpool* pool, task* t, task_priority priority) {
+void taskpool_post(taskpool* pool, tc_task* t, task_priority priority) {
   t->type = TASK_FIREFORGET;
   pool_add_task(pool, t, priority);
   tc_sema_post(&pool->sema, 1);
 }
 
-void taskpool_wait_all(taskpool* pool, task** tasks, int32_t count,
+void taskpool_wait_all(taskpool* pool, tc_task** tasks, int32_t count,
                        task_priority priority) {
   tc_sema wait_sema;
   tc_sema_init(&wait_sema, 0);
 
   for (int32_t i = 0; i < count; i++) {
-    task* t = tasks[i];
+    tc_task* t = tasks[i];
     t->type = TASK_MULTIWAIT;
     t->waitall_sema = &wait_sema;
     pool_add_task(pool, t, priority);

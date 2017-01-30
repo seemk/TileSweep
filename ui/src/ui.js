@@ -68,6 +68,7 @@ const ControlPanel = React.createClass({
     const maxZoom = this.state.maxZoom;
 
     const submitSuccess = function() {
+      that.vectorSource.clear();
       that.updateStatus();
     };
 

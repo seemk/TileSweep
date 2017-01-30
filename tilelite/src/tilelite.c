@@ -135,7 +135,8 @@ typedef struct {
   image img;
 } tile_render_args;
 
-static void* render_tile_background(void* arg, const task_extra_info* extra) {
+static void* render_tile_background(void* arg,
+                                    const tc_task_extra_info* extra) {
   tile_render_args* args = (tile_render_args*)arg;
   tilelite_shared_ctx* shared = args->shared;
   prerender_job_stats* stats = args->stats;
@@ -172,7 +173,7 @@ static void* render_tile_background(void* arg, const task_extra_info* extra) {
   return NULL;
 }
 
-static void* calculate_tiles(void* arg, const task_extra_info* extra) {
+static void* calculate_tiles(void* arg, const tc_task_extra_info* extra) {
   tile_calc_job* job = (tile_calc_job*)arg;
   tilelite_shared_ctx* shared = (tilelite_shared_ctx*)job->user;
 
@@ -194,7 +195,7 @@ static void* calculate_tiles(void* arg, const task_extra_info* extra) {
                                .w = job->tile_size,
                                .h = job->tile_size};
 
-    task* tsk = task_create(render_tile_background, render_args);
+    tc_task* tsk = tc_task_create(render_tile_background, render_args);
     taskpool_post(shared->task_pool, tsk, TP_MED);
   }
 
@@ -205,7 +206,8 @@ static void* calculate_tiles(void* arg, const task_extra_info* extra) {
     fill_poly_state_destroy(&job->fill_state);
     free(job);
   } else {
-    taskpool_post(shared->task_pool, task_create(calculate_tiles, job), TP_LOW);
+    taskpool_post(shared->task_pool, tc_task_create(calculate_tiles, job),
+                  TP_LOW);
   }
 
   free(tiles);
@@ -213,7 +215,7 @@ static void* calculate_tiles(void* arg, const task_extra_info* extra) {
   return NULL;
 }
 
-static void* setup_prerender(void* arg, const task_extra_info* info) {
+static void* setup_prerender(void* arg, const tc_task_extra_info* info) {
   prerender_req* req = (prerender_req*)arg;
   tilelite_shared_ctx* shared = (tilelite_shared_ctx*)req->user;
   tl_log("setting up prerender. min_zoom: %d, max_zoom %d, tile_size: %d",
@@ -245,7 +247,7 @@ static void* setup_prerender(void* arg, const task_extra_info* info) {
     job->user = req->user;
     job->stats = stats;
 
-    task* tiles_task = task_create(calculate_tiles, job);
+    tc_task* tiles_task = tc_task_create(calculate_tiles, job);
     taskpool_post(shared->task_pool, tiles_task, TP_LOW);
   }
 
@@ -318,14 +320,14 @@ static int start_prerender(h2o_handler_t* h, h2o_req_t* req) {
 
   json_value_free(root);
 
-  task* setup_prerender_task = task_create(setup_prerender, prerender);
+  tc_task* setup_prerender_task = tc_task_create(setup_prerender, prerender);
   taskpool_post(shared->task_pool, setup_prerender_task, TP_LOW);
 
   send_ok_request(req);
   return 0;
 }
 
-static void* render_tile_handler(void* arg, const task_extra_info* extra) {
+static void* render_tile_handler(void* arg, const tc_task_extra_info* extra) {
   tile_render_task* task = (tile_render_task*)arg;
   tile_renderer* renderer =
       task->shared->renderers[extra->executing_thread_idx];
@@ -373,9 +375,9 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
     tile_render_task renderer_info = {
         .tile = t, .img = img, .shared = shared, .success = 0};
 
-    task* render_task = task_create(render_tile_handler, &renderer_info);
+    tc_task* render_task = tc_task_create(render_tile_handler, &renderer_info);
     taskpool_wait(shared->task_pool, render_task, TP_HIGH);
-    task_destroy(render_task);
+    tc_task_destroy(render_task);
 
     if (renderer_info.success) {
       img = renderer_info.img;
@@ -465,7 +467,7 @@ typedef struct {
   int32_t renderer_idx;
 } renderer_create_args;
 
-static void* setup_renderer(void* arg, const task_extra_info* extra) {
+static void* setup_renderer(void* arg, const tc_task_extra_info* extra) {
   (void)extra;
   renderer_create_args* args = (renderer_create_args*)arg;
   tl_options* opt = args->options;
@@ -571,8 +573,8 @@ int main(int argc, char** argv) {
   shared->stats = tilelite_stats_create();
   atomic_init(&shared->job_id_counter, 1);
 
-  task** startup_tasks =
-      (task**)calloc(shared->num_task_threads, sizeof(task*));
+  tc_task** startup_tasks =
+      (tc_task**)calloc(shared->num_task_threads, sizeof(tc_task*));
 
   renderer_create_args* rc_args = (renderer_create_args*)calloc(
       shared->num_task_threads, sizeof(renderer_create_args));
@@ -582,7 +584,7 @@ int main(int argc, char** argv) {
       rc_args[i] = (renderer_create_args){
           .options = &opt, .shared = shared, .renderer_idx = i};
 
-      task* t = task_create(setup_renderer, &rc_args[i]);
+      tc_task* t = tc_task_create(setup_renderer, &rc_args[i]);
       startup_tasks[i] = t;
     }
 
@@ -590,7 +592,7 @@ int main(int argc, char** argv) {
                       shared->num_task_threads, TP_HIGH);
 
     for (int32_t i = 0; i < shared->num_task_threads; i++) {
-      task_destroy(startup_tasks[i]);
+      tc_task_destroy(startup_tasks[i]);
     }
   }
 

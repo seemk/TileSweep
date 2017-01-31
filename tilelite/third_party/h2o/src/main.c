@@ -105,6 +105,15 @@ struct listener_ctx_t {
     h2o_socket_t *sock;
 };
 
+typedef struct st_resolve_tag_node_cache_entry_t {
+    h2o_iovec_t filename;
+    yoml_t *node;
+} resolve_tag_node_cache_entry_t;
+
+typedef struct st_resolve_tag_arg_t {
+    H2O_VECTOR(resolve_tag_node_cache_entry_t) node_cache;
+} resolve_tag_arg_t;
+
 typedef enum en_run_mode_t {
     RUN_MODE_WORKER = 0,
     RUN_MODE_MASTER,
@@ -134,31 +143,37 @@ static struct {
         h2o_context_t ctx;
         h2o_multithread_receiver_t server_notifications;
         h2o_multithread_receiver_t memcached;
-    } *threads;
+    } * threads;
     volatile sig_atomic_t shutdown_requested;
     volatile sig_atomic_t initialized_threads;
     struct {
         /* unused buffers exist to avoid false sharing of the cache line */
-        char _unused1[32];
-        int _num_connections; /* should use atomic functions to update the value */
-        char _unused2[32];
+        char _unused1_avoir_false_sharing[32];
+        int _num_connections; /* number of currently handled incoming connections, should use atomic functions to update the value
+                                 */
+        char _unused2_avoir_false_sharing[32];
+        unsigned long
+            _num_sessions; /* total number of opened incoming connections, should use atomic functions to update the value */
+        char _unused3_avoir_false_sharing[32];
     } state;
+    char *crash_handler;
 } conf = {
-    {},              /* globalconf */
-    RUN_MODE_WORKER, /* dry-run */
-    {},              /* server_starter */
-    NULL,            /* listeners */
-    0,               /* num_listeners */
-    NULL,            /* pid_file */
-    NULL,            /* error_log */
-    1024,            /* max_connections */
-    0,               /* initialized in main() */
-    0,               /* initialized in main() */
-    0,               /* initialized in main() */
-    NULL,            /* thread_ids */
-    0,               /* shutdown_requested */
-    0,               /* initialized_threads */
-    {},              /* state */
+    {NULL},                                 /* globalconf */
+    RUN_MODE_WORKER,                        /* dry-run */
+    {NULL},                                 /* server_starter */
+    NULL,                                   /* listeners */
+    0,                                      /* num_listeners */
+    NULL,                                   /* pid_file */
+    NULL,                                   /* error_log */
+    1024,                                   /* max_connections */
+    0,                                      /* initialized in main() */
+    0,                                      /* initialized in main() */
+    0,                                      /* initialized in main() */
+    NULL,                                   /* thread_ids */
+    0,                                      /* shutdown_requested */
+    0,                                      /* initialized_threads */
+    {{0}},                                  /* state */
+    "share/h2o/annotate-backtrace-symbols", /* crash_handler */
 };
 
 static neverbleed_t *neverbleed = NULL;
@@ -221,8 +236,7 @@ static int on_sni_callback(SSL *ssl, int *ad, void *arg)
             }
         }
         ctx_index = 0;
-    Found:
-        ;
+    Found:;
     }
 
     if (SSL_get_SSL_CTX(ssl) != listener->ssl.entries[ctx_index]->ctx)
@@ -477,8 +491,7 @@ static int listener_setup_ssl(h2o_configurator_command_t *cmd, h2o_configurator_
 #endif
 #undef MAP
             h2o_configurator_errprintf(cmd, minimum_version, "unknown protocol version: %s", minimum_version->data.scalar);
-        VersionFound:
-            ;
+        VersionFound:;
         } else {
             /* default is >= TLSv1 */
             ssl_options |= SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3;
@@ -804,19 +817,27 @@ static int open_tcp_listener(h2o_configurator_command_t *cmd, yoml_t *node, cons
             goto Error;
     }
 #endif
+    if (bind(fd, addr, addrlen) != 0)
+        goto Error;
+    if (listen(fd, H2O_SOMAXCONN) != 0)
+        goto Error;
+
     /* set TCP_FASTOPEN; when tfo_queues is zero TFO is always disabled */
     if (conf.tfo_queues > 0) {
 #ifdef TCP_FASTOPEN
-        if (setsockopt(fd, IPPROTO_TCP, TCP_FASTOPEN, (const void *)&conf.tfo_queues, sizeof(conf.tfo_queues)) != 0)
+        int tfo_queues;
+#ifdef __APPLE__
+        /* In OS X, the option value for TCP_FASTOPEN must be 1 if is's enabled */
+        tfo_queues = 1;
+#else
+        tfo_queues = conf.tfo_queues;
+#endif
+        if (setsockopt(fd, IPPROTO_TCP, TCP_FASTOPEN, (const void *)&tfo_queues, sizeof(tfo_queues)) != 0)
             fprintf(stderr, "[warning] failed to set TCP_FASTOPEN:%s\n", strerror(errno));
 #else
         assert(!"conf.tfo_queues not zero on platform without TCP_FASTOPEN");
 #endif
     }
-    if (bind(fd, addr, addrlen) != 0)
-        goto Error;
-    if (listen(fd, H2O_SOMAXCONN) != 0)
-        goto Error;
 
     return fd;
 
@@ -889,10 +910,11 @@ static int on_config_listen(h2o_configurator_command_t *cmd, h2o_configurator_co
     if (strcmp(type, "unix") == 0) {
 
         /* unix socket */
-        struct sockaddr_un sa = {};
+        struct sockaddr_un sa;
         int listener_is_new;
         struct listener_config_t *listener;
         /* build sockaddr */
+        memset(&sa, 0, sizeof(sa));
         if (strlen(servname) >= sizeof(sa.sun_path)) {
             h2o_configurator_errprintf(cmd, node, "path:%s is too long as a unix socket name", servname);
             return -1;
@@ -1125,29 +1147,105 @@ static int on_config_temp_buffer_path(h2o_configurator_command_t *cmd, h2o_confi
     return 0;
 }
 
-static yoml_t *load_config(const char *fn)
+static int on_config_crash_handler(h2o_configurator_command_t *cmd, h2o_configurator_context_t *ctx, yoml_t *node)
+{
+    conf.crash_handler = h2o_strdup(NULL, node->data.scalar, SIZE_MAX).base;
+    return 0;
+}
+
+static yoml_t *load_config(yoml_parse_args_t *parse_args, yoml_t *source)
 {
     FILE *fp;
     yaml_parser_t parser;
     yoml_t *yoml;
 
-    if ((fp = fopen(fn, "rb")) == NULL) {
-        fprintf(stderr, "could not open configuration file:%s:%s\n", fn, strerror(errno));
+    if ((fp = fopen(parse_args->filename, "rb")) == NULL) {
+        fprintf(stderr, "could not open configuration file %s: %s\n", parse_args->filename, strerror(errno));
         return NULL;
     }
+
     yaml_parser_initialize(&parser);
     yaml_parser_set_input_file(&parser, fp);
 
-    yoml = yoml_parse_document(&parser, NULL, NULL, fn);
+    yoml = yoml_parse_document(&parser, NULL, parse_args);
 
-    if (yoml == NULL)
-        fprintf(stderr, "failed to parse configuration file:%s:line %d:%s\n", fn, (int)parser.problem_mark.line + 1, parser.problem);
+    if (yoml == NULL) {
+        fprintf(stderr, "failed to parse configuration file %s line %d", parse_args->filename, (int)parser.problem_mark.line + 1);
+        if (source != NULL) {
+            fprintf(stderr, " (included from file %s line %d)", source->filename, (int)source->line + 1);
+        }
+        fprintf(stderr, ": %s\n", parser.problem);
+    }
 
     yaml_parser_delete(&parser);
 
     fclose(fp);
 
     return yoml;
+}
+
+static yoml_t *resolve_tag(const char *tag, yoml_t *node, void *cb_arg);
+static yoml_t *resolve_file_tag(yoml_t *node, resolve_tag_arg_t *arg)
+{
+    size_t i;
+    yoml_t *loaded;
+
+    if (node->type != YOML_TYPE_SCALAR) {
+        fprintf(stderr, "value of the !file node must be a scalar");
+        return NULL;
+    }
+
+    char *filename = node->data.scalar;
+
+    /* check cache */
+    for (i = 0; i != arg->node_cache.size; ++i) {
+        resolve_tag_node_cache_entry_t *cached = arg->node_cache.entries + i;
+        if (strcmp(filename, cached->filename.base) == 0) {
+            ++cached->node->_refcnt;
+            return cached->node;
+        }
+    }
+
+    yoml_parse_args_t parse_args = {
+        filename,          /* filename */
+        NULL,              /* mem_set */
+        {resolve_tag, arg} /* resolve_tag */
+    };
+    loaded = load_config(&parse_args, node);
+
+    if (loaded != NULL) {
+        /* cache newly loaded node */
+        h2o_vector_reserve(NULL, &arg->node_cache, arg->node_cache.size + 1);
+        resolve_tag_node_cache_entry_t entry = {h2o_strdup(NULL, filename, SIZE_MAX), loaded};
+        arg->node_cache.entries[arg->node_cache.size++] = entry;
+        ++loaded->_refcnt;
+    }
+
+    return loaded;
+}
+
+static yoml_t *resolve_tag(const char *tag, yoml_t *node, void *cb_arg)
+{
+    resolve_tag_arg_t *arg = (resolve_tag_arg_t *)cb_arg;
+
+    if (strcmp(tag, "!file") == 0) {
+        return resolve_file_tag(node, arg);
+    }
+
+    /* otherwise, return the node itself */
+    ++node->_refcnt;
+    return node;
+}
+
+static void dispose_resolve_tag_arg(resolve_tag_arg_t *arg)
+{
+    size_t i;
+    for (i = 0; i != arg->node_cache.size; ++i) {
+        resolve_tag_node_cache_entry_t *cached = arg->node_cache.entries + i;
+        free(cached->filename.base);
+        yoml_free(cached->node, NULL);
+    }
+    free(arg->node_cache.entries);
 }
 
 static void notify_all_threads(void)
@@ -1168,9 +1266,9 @@ static void on_sigterm(int signo)
 }
 
 #ifdef __GLIBC__
-static int popen_annotate_backtrace_symbols(void)
+static int popen_crash_handler(void)
 {
-    char *cmd_fullpath = h2o_configurator_get_cmd_path("share/h2o/annotate-backtrace-symbols"), *argv[] = {cmd_fullpath, NULL};
+    char *cmd_fullpath = h2o_configurator_get_cmd_path(conf.crash_handler), *argv[] = {cmd_fullpath, NULL};
     int pipefds[2];
 
     /* create pipe */
@@ -1197,17 +1295,17 @@ static int popen_annotate_backtrace_symbols(void)
     return pipefds[1];
 }
 
-static int backtrace_symbols_to_fd = -1;
+static int crash_handler_fd = -1;
 
 static void on_sigfatal(int signo)
 {
-    fprintf(stderr, "received fatal signal %d; backtrace follows\n", signo);
+    fprintf(stderr, "received fatal signal %d\n", signo);
 
     h2o_set_signal_handler(signo, SIG_DFL);
 
     void *frames[128];
     int framecnt = backtrace(frames, sizeof(frames) / sizeof(frames[0]));
-    backtrace_symbols_fd(frames, framecnt, backtrace_symbols_to_fd);
+    backtrace_symbols_fd(frames, framecnt, crash_handler_fd);
 
     raise(signo);
 }
@@ -1218,8 +1316,8 @@ static void setup_signal_handlers(void)
     h2o_set_signal_handler(SIGTERM, on_sigterm);
     h2o_set_signal_handler(SIGPIPE, SIG_IGN);
 #ifdef __GLIBC__
-    if ((backtrace_symbols_to_fd = popen_annotate_backtrace_symbols()) == -1)
-        backtrace_symbols_to_fd = 2;
+    if ((crash_handler_fd = popen_crash_handler()) == -1)
+        crash_handler_fd = 2;
     h2o_set_signal_handler(SIGABRT, on_sigfatal);
     h2o_set_signal_handler(SIGBUS, on_sigfatal);
     h2o_set_signal_handler(SIGFPE, on_sigfatal);
@@ -1231,6 +1329,11 @@ static void setup_signal_handlers(void)
 static int num_connections(int delta)
 {
     return __sync_fetch_and_add(&conf.state._num_connections, delta);
+}
+
+static unsigned long num_sessions(int delta)
+{
+    return __sync_fetch_and_add(&conf.state._num_sessions, delta);
 }
 
 static void on_socketclose(void *data)
@@ -1268,6 +1371,7 @@ static void on_accept(h2o_socket_t *listener, const char *err)
             break;
         }
         num_connections(1);
+        num_sessions(1);
 
         sock->on_close.cb = on_socketclose;
         sock->on_close.data = ctx->accept_ctx.ctx;
@@ -1381,7 +1485,7 @@ H2O_NORETURN static void *run_loop(void *_thread_index)
 
 static char **build_server_starter_argv(const char *h2o_cmd, const char *config_file)
 {
-    H2O_VECTOR(char *)args = {};
+    H2O_VECTOR(char *) args = {NULL};
     size_t i;
 
     h2o_vector_reserve(NULL, &args, 1);
@@ -1395,8 +1499,9 @@ static char **build_server_starter_argv(const char *h2o_cmd, const char *config_
     }
     if (conf.error_log != NULL) {
         h2o_vector_reserve(NULL, &args, args.size + 1);
-        args.entries[args.size++] = h2o_concat(NULL, h2o_iovec_init(H2O_STRLIT("--log-file=")),
-                                               h2o_iovec_init(conf.error_log, strlen(conf.error_log))).base;
+        args.entries[args.size++] =
+            h2o_concat(NULL, h2o_iovec_init(H2O_STRLIT("--log-file=")), h2o_iovec_init(conf.error_log, strlen(conf.error_log)))
+                .base;
     }
 
     switch (conf.run_mode) {
@@ -1455,9 +1560,67 @@ static int run_using_server_starter(const char *h2o_cmd, const char *config_file
     return EX_CONFIG;
 }
 
-static h2o_iovec_t on_extra_status(h2o_globalconf_t *_conf, h2o_mem_pool_t *pool)
+/* make jemalloc linkage optional by marking the functions as 'weak',
+ * since upstream doesn't rely on it. */
+struct extra_status_jemalloc_cb_arg {
+    h2o_iovec_t outbuf;
+    int err;
+    size_t written;
+};
+
+#if JEMALLOC_STATS == 1
+static void extra_status_jemalloc_cb(void *ctx, const char *stats)
 {
-#define BUFSIZE 1024
+    size_t cur_len;
+    struct extra_status_jemalloc_cb_arg *out = ctx;
+    h2o_iovec_t outbuf = out->outbuf;
+    int i;
+
+    if (out->written >= out->outbuf.len || out->err) {
+        return;
+    }
+    cur_len = out->written;
+
+    i = 0;
+    while (cur_len < outbuf.len && stats[i]) {
+        switch (stats[i]) {
+#define JSON_ESCAPE(x, y)                                                                                                          \
+    case x:                                                                                                                        \
+        outbuf.base[cur_len++] = '\\';                                                                                             \
+        if (cur_len >= outbuf.len) {                                                                                               \
+            goto err;                                                                                                              \
+        }                                                                                                                          \
+        outbuf.base[cur_len] = y;                                                                                                  \
+        break;
+            JSON_ESCAPE('\b', 'b');
+            JSON_ESCAPE('\f', 'f');
+            JSON_ESCAPE('\n', 'n');
+            JSON_ESCAPE('\r', 'r')
+            JSON_ESCAPE('\t', 't');
+            JSON_ESCAPE('/', '/');
+            JSON_ESCAPE('"', '"');
+            JSON_ESCAPE('\\', '\\');
+#undef JSON_ESCAPE
+        default:
+            outbuf.base[cur_len] = stats[i];
+        }
+        i++;
+        cur_len++;
+    }
+    if (cur_len < outbuf.len) {
+        out->written = cur_len;
+        return;
+    }
+
+err:
+    out->err = 1;
+    return;
+}
+#endif
+
+static h2o_iovec_t on_extra_status(void *unused, h2o_globalconf_t *_conf, h2o_req_t *req)
+{
+#define BUFSIZE (16 * 1024)
     h2o_iovec_t ret;
     char current_time[H2O_TIMESTR_LOG_LEN + 1], restart_time[H2O_TIMESTR_LOG_LEN + 1];
     const char *generation;
@@ -1468,7 +1631,7 @@ static h2o_iovec_t on_extra_status(h2o_globalconf_t *_conf, h2o_mem_pool_t *pool
     if ((generation = getenv("SERVER_STARTER_GENERATION")) == NULL)
         generation = "null";
 
-    ret.base = h2o_mem_alloc_pool(pool, BUFSIZE);
+    ret.base = h2o_mem_alloc_pool(&req->pool, BUFSIZE);
     ret.len = snprintf(ret.base, BUFSIZE, ",\n"
                                           " \"server-version\": \"" H2O_VERSION "\",\n"
                                           " \"openssl-version\": \"%s\",\n"
@@ -1479,10 +1642,66 @@ static h2o_iovec_t on_extra_status(h2o_globalconf_t *_conf, h2o_mem_pool_t *pool
                                           " \"connections\": %d,\n"
                                           " \"max-connections\": %d,\n"
                                           " \"listeners\": %zu,\n"
-                                          " \"worker-threads\": %zu",
+                                          " \"worker-threads\": %zu,\n"
+                                          " \"num-sessions\": %lu",
                        SSLeay_version(SSLEAY_VERSION), current_time, restart_time, (uint64_t)(now - conf.launch_time), generation,
-                       num_connections(0), conf.max_connections, conf.num_listeners, conf.num_threads);
+                       num_connections(0), conf.max_connections, conf.num_listeners, conf.num_threads, num_sessions(0));
     assert(ret.len < BUFSIZE);
+
+#if JEMALLOC_STATS == 1
+    struct extra_status_jemalloc_cb_arg arg;
+    size_t sz, allocated, active, metadata, resident, mapped;
+    uint64_t epoch = 1;
+    /* internal jemalloc interface */
+    void malloc_stats_print(void (*write_cb)(void *, const char *), void *cbopaque, const char *opts);
+    int mallctl(const char *name, void *oldp, size_t *oldlenp, void *newp, size_t newlen);
+
+    arg.outbuf = h2o_iovec_init(alloca(BUFSIZE - ret.len), BUFSIZE - ret.len);
+    arg.err = 0;
+    arg.written = snprintf(arg.outbuf.base, arg.outbuf.len, ",\n"
+                                                            " \"jemalloc\": {\n"
+                                                            "   \"jemalloc-raw\": \"");
+    malloc_stats_print(extra_status_jemalloc_cb, &arg, "ga" /* omit general info, only aggregated stats */);
+
+    if (arg.err || arg.written + 1 >= arg.outbuf.len) {
+        goto jemalloc_err;
+    }
+
+    /* terminate the jemalloc-raw json string */
+    arg.written += snprintf(&arg.outbuf.base[arg.written], arg.outbuf.len - arg.written, "\"");
+    if (arg.written + 1 >= arg.outbuf.len) {
+        goto jemalloc_err;
+    }
+
+    sz = sizeof(epoch);
+    mallctl("epoch", &epoch, &sz, &epoch, sz);
+
+    sz = sizeof(size_t);
+    if (!mallctl("stats.allocated", &allocated, &sz, NULL, 0) && !mallctl("stats.active", &active, &sz, NULL, 0) &&
+        !mallctl("stats.metadata", &metadata, &sz, NULL, 0) && !mallctl("stats.resident", &resident, &sz, NULL, 0) &&
+        !mallctl("stats.mapped", &mapped, &sz, NULL, 0)) {
+        arg.written += snprintf(&arg.outbuf.base[arg.written], arg.outbuf.len - arg.written, ",\n"
+                                                                                             "   \"allocated\": %zu,\n"
+                                                                                             "   \"active\": %zu,\n"
+                                                                                             "   \"metadata\": %zu,\n"
+                                                                                             "   \"resident\": %zu,\n"
+                                                                                             "   \"mapped\": %zu }",
+                                allocated, active, metadata, resident, mapped);
+    }
+    if (arg.written + 1 >= arg.outbuf.len) {
+        goto jemalloc_err;
+    }
+
+    strncpy(&ret.base[ret.len], arg.outbuf.base, arg.written);
+    ret.base[ret.len + arg.written] = '\0';
+    ret.len += arg.written;
+    return ret;
+
+jemalloc_err:
+    /* couldn't fit the jemalloc output, exiting */
+    ret.base[ret.len] = '\0';
+
+#endif /* JEMALLOC_STATS == 1 */
 
     return ret;
 #undef BUFSIZE
@@ -1523,6 +1742,8 @@ static void setup_configurators(void)
                                         on_config_num_ocsp_updaters);
         h2o_configurator_define_command(c, "temp-buffer-path", H2O_CONFIGURATOR_FLAG_GLOBAL | H2O_CONFIGURATOR_FLAG_EXPECT_SCALAR,
                                         on_config_temp_buffer_path);
+        h2o_configurator_define_command(c, "crash-handler", H2O_CONFIGURATOR_FLAG_GLOBAL | H2O_CONFIGURATOR_FLAG_EXPECT_SCALAR,
+                                        on_config_crash_handler);
     }
 
     h2o_access_log_register_configurator(&conf.globalconf);
@@ -1531,21 +1752,23 @@ static void setup_configurators(void)
     h2o_errordoc_register_configurator(&conf.globalconf);
     h2o_fastcgi_register_configurator(&conf.globalconf);
     h2o_file_register_configurator(&conf.globalconf);
+    h2o_throttle_resp_register_configurator(&conf.globalconf);
     h2o_headers_register_configurator(&conf.globalconf);
     h2o_proxy_register_configurator(&conf.globalconf);
     h2o_reproxy_register_configurator(&conf.globalconf);
     h2o_redirect_register_configurator(&conf.globalconf);
     h2o_status_register_configurator(&conf.globalconf);
+    h2o_http2_debug_state_register_configurator(&conf.globalconf);
 #if H2O_USE_MRUBY
     h2o_mruby_register_configurator(&conf.globalconf);
 #endif
 
-    conf.globalconf.status.extra_status = on_extra_status;
+    h2o_config_register_simple_status_handler(&conf.globalconf, (h2o_iovec_t){H2O_STRLIT("main")}, on_extra_status);
 }
 
 int main(int argc, char **argv)
 {
-    const char *cmd = argv[0], *opt_config_file = "h2o.conf";
+    const char *cmd = argv[0], *opt_config_file = H2O_TO_STR(H2O_CONFIG_PATH);
     int error_log_fd = -1;
 
     conf.num_threads = h2o_numproc();
@@ -1561,12 +1784,9 @@ int main(int argc, char **argv)
 
     { /* parse options */
         int ch;
-        static struct option longopts[] = {{"conf", required_argument, NULL, 'c'},
-                                           {"mode", required_argument, NULL, 'm'},
-                                           {"test", no_argument, NULL, 't'},
-                                           {"version", no_argument, NULL, 'v'},
-                                           {"help", no_argument, NULL, 'h'},
-                                           {NULL, 0, NULL, 0}};
+        static struct option longopts[] = {{"conf", required_argument, NULL, 'c'}, {"mode", required_argument, NULL, 'm'},
+                                           {"test", no_argument, NULL, 't'},       {"version", no_argument, NULL, 'v'},
+                                           {"help", no_argument, NULL, 'h'},       {NULL}};
         while ((ch = getopt_long(argc, argv, "c:m:tvh", longopts, NULL)) != -1) {
             switch (ch) {
             case 'c':
@@ -1615,7 +1835,7 @@ int main(int argc, char **argv)
                        "  h2o [options]\n"
                        "\n"
                        "Options:\n"
-                       "  -c, --conf FILE    configuration file (default: h2o.conf)\n"
+                       "  -c, --conf FILE    configuration file (default: %s)\n"
                        "  -m, --mode <mode>  specifies one of the following mode\n"
                        "                     - worker: invoked process handles incoming connections\n"
                        "                               (default)\n"
@@ -1635,7 +1855,8 @@ int main(int argc, char **argv)
                        "\n"
                        "Please refer to the documentation under `share/doc/h2o` (or available online at\n"
                        "http://h2o.examp1e.net/) for how to configure the server.\n"
-                       "\n");
+                       "\n",
+                       H2O_TO_STR(H2O_CONFIG_PATH));
                 exit(0);
                 break;
             case ':':
@@ -1665,10 +1886,18 @@ int main(int argc, char **argv)
 
     { /* configure */
         yoml_t *yoml;
-        if ((yoml = load_config(opt_config_file)) == NULL)
+        resolve_tag_arg_t resolve_tag_arg = {{NULL}};
+        yoml_parse_args_t parse_args = {
+            opt_config_file,                /* filename */
+            NULL,                           /* mem_set */
+            {resolve_tag, &resolve_tag_arg} /* resolve_tag */
+        };
+        if ((yoml = load_config(&parse_args, NULL)) == NULL)
             exit(EX_CONFIG);
         if (h2o_configurator_apply(&conf.globalconf, yoml, conf.run_mode != RUN_MODE_WORKER) != 0)
             exit(EX_CONFIG);
+
+        dispose_resolve_tag_arg(&resolve_tag_arg);
         yoml_free(yoml, NULL);
     }
     /* calculate defaults (note: open file cached is purged once every loop) */
@@ -1690,6 +1919,7 @@ int main(int argc, char **argv)
         }
     }
 
+    h2o_srand();
     /* handle run_mode == MASTER|TEST */
     switch (conf.run_mode) {
     case RUN_MODE_WORKER:
@@ -1767,7 +1997,7 @@ int main(int argc, char **argv)
     { /* initialize SSL_CTXs for session resumption and ticket-based resumption (also starts memcached client threads for the
          purpose) */
         size_t i, j;
-        H2O_VECTOR(SSL_CTX *)ssl_contexts = {};
+        H2O_VECTOR(SSL_CTX *) ssl_contexts = {NULL};
         for (i = 0; i != conf.num_listeners; ++i) {
             for (j = 0; j != conf.listeners[i]->ssl.size; ++j) {
                 h2o_vector_reserve(NULL, &ssl_contexts, ssl_contexts.size + 1);

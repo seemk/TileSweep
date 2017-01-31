@@ -91,6 +91,7 @@ void h2o_context_init(h2o_context_t *ctx, h2o_loop_t *loop, h2o_globalconf_t *co
     ctx->globalconf = config;
     h2o_timeout_init(ctx->loop, &ctx->zero_timeout, 0);
     h2o_timeout_init(ctx->loop, &ctx->one_sec_timeout, 1000);
+    h2o_timeout_init(ctx->loop, &ctx->hundred_ms_timeout, 100);
     ctx->queue = h2o_multithread_create_queue(loop);
     h2o_multithread_register_receiver(ctx->queue, &ctx->receivers.hostinfo_getaddr, h2o_hostinfo_getaddr_receiver);
     ctx->filecache = h2o_filecache_create(config->filecache.capacity);
@@ -139,6 +140,7 @@ void h2o_context_dispose(h2o_context_t *ctx)
     free(ctx->_module_configs);
     h2o_timeout_dispose(ctx->loop, &ctx->zero_timeout);
     h2o_timeout_dispose(ctx->loop, &ctx->one_sec_timeout);
+    h2o_timeout_dispose(ctx->loop, &ctx->hundred_ms_timeout);
     h2o_timeout_dispose(ctx->loop, &ctx->handshake_timeout);
     h2o_timeout_dispose(ctx->loop, &ctx->http1.req_timeout);
     h2o_timeout_dispose(ctx->loop, &ctx->http2.idle_timeout);
@@ -147,6 +149,15 @@ void h2o_context_dispose(h2o_context_t *ctx)
 
     h2o_filecache_destroy(ctx->filecache);
     ctx->filecache = NULL;
+
+    /* clear storage */
+    for (i = 0; i != ctx->storage.size; ++i) {
+        h2o_context_storage_item_t *item = ctx->storage.entries + i;
+        if (item->dispose != NULL) {
+            item->dispose(item->data);
+        }
+    }
+    free(ctx->storage.entries);
 
     /* TODO assert that the all the getaddrinfo threads are idle */
     h2o_multithread_unregister_receiver(ctx->queue, &ctx->receivers.hostinfo_getaddr);

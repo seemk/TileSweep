@@ -47,8 +47,8 @@ struct st_h2o_sendfile_generator_t {
     h2o_req_t *req;
     size_t bytesleft;
     h2o_iovec_t content_encoding;
-    int send_vary : 1;
-    int send_etag : 1;
+    unsigned send_vary : 1;
+    unsigned send_etag : 1;
     char *buf;
     struct {
         size_t filesize;
@@ -116,7 +116,7 @@ static void do_proceed(h2o_generator_t *_self, h2o_req_t *req)
     size_t rlen;
     ssize_t rret;
     h2o_iovec_t vec;
-    int is_final;
+    h2o_send_state_t send_state;
 
     /* read the file */
     rlen = self->bytesleft;
@@ -125,20 +125,23 @@ static void do_proceed(h2o_generator_t *_self, h2o_req_t *req)
     while ((rret = pread(self->file.ref->fd, self->buf, rlen, self->file.off)) == -1 && errno == EINTR)
         ;
     if (rret == -1) {
-        req->http1_is_persistent = 0; /* FIXME need a better interface to dispose an errored response w. content-length */
-        h2o_send(req, NULL, 0, 1);
+        h2o_send(req, NULL, 0, H2O_SEND_STATE_ERROR);
         do_close(&self->super, req);
         return;
     }
     self->file.off += rret;
     self->bytesleft -= rret;
-    is_final = self->bytesleft == 0;
+    if (self->bytesleft == 0) {
+        send_state = H2O_SEND_STATE_FINAL;
+    } else {
+        send_state = H2O_SEND_STATE_IN_PROGRESS;
+    }
 
     /* send (and close if done) */
     vec.base = self->buf;
     vec.len = rret;
-    h2o_send(req, &vec, 1, is_final);
-    if (is_final)
+    h2o_send(req, &vec, 1, send_state);
+    if (send_state == H2O_SEND_STATE_FINAL)
         do_close(&self->super, req);
 }
 
@@ -148,7 +151,7 @@ static void do_multirange_proceed(h2o_generator_t *_self, h2o_req_t *req)
     size_t rlen, used_buf = 0;
     ssize_t rret, vecarrsize;
     h2o_iovec_t vec[2];
-    int is_finished;
+    h2o_send_state_t send_state;
 
     if (self->bytesleft == 0) {
         size_t *range_cur = self->ranged.range_infos + 2 * self->ranged.current_range;
@@ -181,24 +184,23 @@ static void do_multirange_proceed(h2o_generator_t *_self, h2o_req_t *req)
         vec[1].base = h2o_mem_alloc_pool(&req->pool, sizeof("\r\n--") - 1 + BOUNDARY_SIZE + sizeof("--\r\n"));
         vec[1].len = sprintf(vec[1].base, "\r\n--%s--\r\n", self->ranged.boundary.base);
         vecarrsize = 2;
-        is_finished = 1;
+        send_state = H2O_SEND_STATE_FINAL;
     } else {
         vecarrsize = 1;
-        is_finished = 0;
+        send_state = H2O_SEND_STATE_IN_PROGRESS;
     }
-    h2o_send(req, vec, vecarrsize, is_finished);
-    if (is_finished)
+    h2o_send(req, vec, vecarrsize, send_state);
+    if (send_state == H2O_SEND_STATE_FINAL)
         do_close(&self->super, req);
     return;
 
 Error:
-    req->http1_is_persistent = 0;
-    h2o_send(req, NULL, 0, 1);
+    h2o_send(req, NULL, 0, H2O_SEND_STATE_ERROR);
     do_close(&self->super, req);
     return;
 }
 
-static int do_pull(h2o_generator_t *_self, h2o_req_t *req, h2o_iovec_t *buf)
+static h2o_send_state_t do_pull(h2o_generator_t *_self, h2o_req_t *req, h2o_iovec_t *buf)
 {
     struct st_h2o_sendfile_generator_t *self = (void *)_self;
     ssize_t rret;
@@ -208,9 +210,10 @@ static int do_pull(h2o_generator_t *_self, h2o_req_t *req, h2o_iovec_t *buf)
     while ((rret = pread(self->file.ref->fd, buf->base, buf->len, self->file.off)) == -1 && errno == EINTR)
         ;
     if (rret <= 0) {
-        req->http1_is_persistent = 0; /* FIXME need a better interface to dispose an errored response w. content-length */
         buf->len = 0;
         self->bytesleft = 0;
+        do_close(&self->super, req);
+        return H2O_SEND_STATE_ERROR;
     } else {
         buf->len = rret;
         self->file.off += rret;
@@ -218,9 +221,9 @@ static int do_pull(h2o_generator_t *_self, h2o_req_t *req, h2o_iovec_t *buf)
     }
 
     if (self->bytesleft != 0)
-        return 0;
+        return H2O_SEND_STATE_IN_PROGRESS;
     do_close(&self->super, req);
-    return 1;
+    return H2O_SEND_STATE_FINAL;
 }
 
 static struct st_h2o_sendfile_generator_t *create_generator(h2o_req_t *req, const char *path, size_t path_len, int *is_dir,
@@ -252,7 +255,7 @@ static struct st_h2o_sendfile_generator_t *create_generator(h2o_req_t *req, cons
     }
     if ((fileref = h2o_filecache_open_file(req->conn->ctx->filecache, path, O_RDONLY | O_CLOEXEC)) == NULL)
         return NULL;
-    content_encoding = (h2o_iovec_t){};
+    content_encoding = (h2o_iovec_t){NULL};
 
 Opened:
     if (S_ISDIR(fileref->st.st_mode)) {
@@ -329,7 +332,7 @@ static void do_send_file(struct st_h2o_sendfile_generator_t *self, h2o_req_t *re
     if (!is_get || self->bytesleft == 0) {
         static h2o_generator_t generator = {NULL, NULL};
         h2o_start_response(req, &generator);
-        h2o_send(req, NULL, 0, 1);
+        h2o_send(req, NULL, 0, H2O_SEND_STATE_FINAL);
         do_close(&self->super, req);
         return;
     }
@@ -397,7 +400,7 @@ static int send_dir_listing(h2o_req_t *req, const char *path, size_t path_len, i
 
     /* send data */
     h2o_start_response(req, &generator);
-    h2o_send(req, &bodyvec, 1, 1);
+    h2o_send(req, &bodyvec, 1, H2O_SEND_STATE_FINAL);
     return 0;
 }
 
@@ -414,7 +417,7 @@ static size_t *process_range(h2o_mem_pool_t *pool, h2o_iovec_t *range_value, siz
     size_t range_start = SIZE_MAX, range_count = 0;
     char *buf = range_value->base, *buf_end = buf + range_value->len;
     int needs_comma = 0;
-    H2O_VECTOR(size_t) ranges = {};
+    H2O_VECTOR(size_t) ranges = {NULL};
 
     if (range_value->len < 6 || memcmp(buf, "bytes=", 6) != 0)
         return NULL;
@@ -498,7 +501,7 @@ static void gen_rand_string(h2o_iovec_t *s)
                                    "abcdefghijklmnopqrstuvwxyz";
 
     for (i = 0; i < s->len; ++i) {
-        s->base[i] = alphanum[rand() % (sizeof(alphanum) - 1)];
+        s->base[i] = alphanum[h2o_rand() % (sizeof(alphanum) - 1)];
     }
 
     s->base[s->len] = 0;
@@ -562,7 +565,7 @@ static int try_dynamic_request(h2o_file_handler_t *self, h2o_req_t *req, char *r
 static void send_method_not_allowed(h2o_req_t *req)
 {
     h2o_add_header(&req->pool, &req->res.headers, H2O_TOKEN_ALLOW, H2O_STRLIT("GET, HEAD"));
-    h2o_send_error(req, 405, "Method Not Allowed", "method not allowed", H2O_SEND_ERROR_KEEP_HEADERS);
+    h2o_send_error_405(req, "Method Not Allowed", "method not allowed", H2O_SEND_ERROR_KEEP_HEADERS);
 }
 
 static int serve_with_generator(struct st_h2o_sendfile_generator_t *generator, h2o_req_t *req, const char *rpath, size_t rpath_len,
@@ -622,8 +625,8 @@ static int serve_with_generator(struct st_h2o_sendfile_generator_t *generator, h
             content_range.base = h2o_mem_alloc_pool(&req->pool, 32);
             content_range.len = sprintf(content_range.base, "bytes */%zu", generator->bytesleft);
             h2o_add_header(&req->pool, &req->res.headers, H2O_TOKEN_CONTENT_RANGE, content_range.base, content_range.len);
-            h2o_send_error(req, 416, "Request Range Not Satisfiable", "requested range not satisfiable",
-                           H2O_SEND_ERROR_KEEP_HEADERS);
+            h2o_send_error_416(req, "Request Range Not Satisfiable", "requested range not satisfiable",
+                               H2O_SEND_ERROR_KEEP_HEADERS);
             goto Close;
         }
         generator->ranged.range_count = range_count;
@@ -767,14 +770,14 @@ static int on_req(h2o_handler_t *_self, h2o_req_t *req)
     /* failed to open */
 
     if (errno == ENFILE || errno == EMFILE) {
-        h2o_send_error(req, 503, "Service Unavailable", "please try again later", 0);
+        h2o_send_error_503(req, "Service Unavailable", "please try again later", 0);
     } else {
         if (h2o_mimemap_has_dynamic_type(self->mimemap) && try_dynamic_request(self, req, rpath, rpath_len) == 0)
             return 0;
         if (errno == ENOENT || errno == ENOTDIR) {
             return -1;
         } else {
-            h2o_send_error(req, 403, "Access Forbidden", "access forbidden", 0);
+            h2o_send_error_403(req, "Access Forbidden", "access forbidden", 0);
         }
     }
     return 0;
@@ -888,13 +891,13 @@ static int specific_handler_on_req(h2o_handler_t *_self, h2o_req_t *req)
     /* open file (or send error or return -1) */
     if ((generator = create_generator(req, self->real_path.base, self->real_path.len, &is_dir, self->flags)) == NULL) {
         if (is_dir) {
-            h2o_send_error(req, 403, "Access Forbidden", "access forbidden", 0);
+            h2o_send_error_403(req, "Access Forbidden", "access forbidden", 0);
         } else if (errno == ENOENT) {
             return -1;
         } else if (errno == ENFILE || errno == EMFILE) {
-            h2o_send_error(req, 503, "Service Unavailable", "please try again later", 0);
+            h2o_send_error_503(req, "Service Unavailable", "please try again later", 0);
         } else {
-            h2o_send_error(req, 403, "Access Forbidden", "access forbidden", 0);
+            h2o_send_error_403(req, "Access Forbidden", "access forbidden", 0);
         }
         return 0;
     }

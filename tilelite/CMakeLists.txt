@@ -15,6 +15,7 @@ if (WITH_MAPNIK)
 endif (WITH_MAPNIK)
 
 SET(DISABLE_LIBUV ON)
+SET(WITH_BUNDLED_SSL ON)
 add_definitions(-DH2O_USE_LIBUV=0)
 add_subdirectory("third_party/h2o")
 

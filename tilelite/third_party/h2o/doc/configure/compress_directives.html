@@ -2,6 +2,7 @@
 <html>
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
 <base href="../" />
 
 <!-- oktavia -->
@@ -22,7 +23,7 @@
 <h1>
 <a href="index.html">H2O</a>
 </h1>
-the optimized HTTP/1.x, HTTP/2 server
+<p class="description">the optimized HTTP/1.x, HTTP/2 server</p>
 
 <!-- oktavia -->
 <form id="searchform">
@@ -59,13 +60,14 @@ Compress Directives
 
 
 <p>
-The compress handler performs on-the-fly compression - it compresses the contents of an HTTP response as it is being sent, if all of the following conditions are met:
-<ul>
-<li>client indicates itself to be capable of decompressing the response transparently with the use of <a href="https://tools.ietf.org/html/rfc7231#section-5.3.4"><code>Accept-Encoding</code></a> header</li>
-<li>the response is deemed compressible (by checking the content-type, see <a href="configure/file_directives.html#file.mime.addtypes"><code>file.mime.addtypes</code></a>)</li>
-</ul>
-</ul>
+The compress handler performs on-the-fly compression - it compresses the contents of an HTTP response as it is being sent, if the client indicates itself to be capable of decompressing the response transparently with the use of <a href="https://tools.ietf.org/html/rfc7231#section-5.3.4"><code>Accept-Encoding</code></a> header</li>, and if the response is deemed compressible according to the following rules.
 </p>
+<p>
+If <code>x-compress-hint</code> response header does not exist or the value is <code>auto</code>, then whether if the response is considered compressible depends on the <code>is_compressible</code> attribute assigned to the content type (see <a href="configure/file_directives.html#file.mime.addtypes"><code>file.mime.addtypes</code></a>).
+If <code>x-compress-hint</code> response header exists and the value is <code>on</code>, the response is always considered to be compressible.
+If the value of the response header is set to <code>off</code>, then the response never gets compressed.
+</p>
+
 <p>
 The following are the  configuration directives recognized by the handler.
 </p>
@@ -115,6 +117,27 @@ compress: [ gzip ]
 <dd><a href="configure/file_directives.html#file.send-compressed"><code>file.send-compressed</code></a>, <a href="configure/file_directives.html#file.mime.addtypes"><code>file.mime.addtypes</code></a>
 </dd>
 </dl>
+
+<div id="compress-minimum-size" class="directive-head">
+<div class="directive-since">since v2.0</div>
+<h3><a href="configure/compress_directives.html#compress-minimum-size"><code>"compress-minimum-size"</code></a></h3>
+</div>
+
+<dl class="directive-desc">
+<dt>Description:</dt>
+<dd>
+<p>
+Defines the minimum size a files needs to have in order for H2O to compress the request.
+
+</p>
+
+</dd>
+<dt><a href="configure/syntax_and_structure.html#config_levels">Level</a>:</dt>
+<dd>global, host, path, extension</dd>
+<dt>Default:</dt>
+<dd><code><pre>compress-minimum-size: 100</pre></code>
+</dl>
+
 
 <div id="gzip" class="directive-head">
 <div class="directive-since">since v1.5</div>

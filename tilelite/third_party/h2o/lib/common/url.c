@@ -40,105 +40,95 @@ static int decode_hex(int ch)
     return -1;
 }
 
-static h2o_iovec_t decode_urlencoded(h2o_mem_pool_t *pool, const char *s, size_t len)
+static size_t handle_special_paths(const char *path, size_t off, size_t last_slash)
 {
-    size_t i;
-    h2o_iovec_t ret;
-    char *dst;
+    size_t orig_off = off, part_size = off - last_slash;
 
-    dst = ret.base = h2o_mem_alloc_pool(pool, len + 1);
-
-    /* decode %xx */
-    for (i = 0; i + 3 <= len;) {
-        int hi, lo;
-        if (s[i] == '%' && (hi = decode_hex(s[i + 1])) != -1 && (lo = decode_hex(s[i + 2])) != -1) {
-            *dst++ = (hi << 4) | lo;
-            i += 3;
-        } else {
-            *dst++ = s[i++];
+    if (part_size == 2 && path[off - 1] == '.') {
+        --off;
+    } else if (part_size == 3 && path[off - 2] == '.' && path[off - 1] == '.') {
+        off -= 2;
+        if (off > 1) {
+            for (--off; path[off - 1] != '/'; --off)
+                ;
         }
     }
-    while (i != len)
-        *dst++ = s[i++];
-    *dst = '\0';
-
-    ret.len = dst - ret.base;
-    return ret;
+    return orig_off - off;
 }
 
-static h2o_iovec_t rewrite_special_paths(h2o_mem_pool_t *pool, const char *src, size_t len)
+/* Perform path normalization and URL decoding in one pass.
+ * See h2o_req_t for the purpose of @norm_indexes. */
+static h2o_iovec_t rebuild_path(h2o_mem_pool_t *pool, const char *src, size_t src_len, size_t *query_at, size_t **norm_indexes)
 {
-    h2o_iovec_t ret;
-    const char *src_end = src + len;
     char *dst;
+    size_t src_off = 0, dst_off = 0, last_slash, rewind;
 
-    if (src == src_end)
-        return h2o_iovec_init("/", 1);
-
-    dst = ret.base = h2o_mem_alloc_pool(pool, len + 1);
-
-    /* assertion hereafter: ret.base[0] is always '/' */
-    *dst++ = '/';
-    if (src[0] == '/')
-        ++src;
-
-    /* split by '/' and handle, at the same time combining repeating '/'s to one */
-    while (1) {
-        const char *part_start = src;
-        for (; src != src_end; ++src)
-            if (*src == '/')
-                break;
-        size_t part_len = src - part_start;
-        if (part_len == 1 && part_start[0] == '.')
-            continue;
-        if (part_len == 2 && memcmp(part_start, "..", 2) == 0) {
-            /* if we can go back one level, do it */
-            if (ret.base != dst - 1) {
-                for (--dst; dst[-1] != '/'; --dst)
-                    ;
-            }
-            continue;
-        }
-        if (part_len != 0) {
-            memcpy(dst, part_start, part_len);
-            dst += part_len;
-        }
-        if (src == src_end)
-            break;
-        assert(*src == '/');
-        if (dst[-1] != '/')
-            *dst++ = '/';
-        ++src;
-    }
-    ret.len = dst - ret.base;
-
-    return ret;
-}
-
-static h2o_iovec_t rebuild_path(h2o_mem_pool_t *pool, const char *path, size_t len, size_t *query_at)
-{
     { /* locate '?', and set len to the end of input path */
-        const char *q = memchr(path, '?', len);
+        const char *q = memchr(src, '?', src_len);
         if (q != NULL) {
-            len = *query_at = q - path;
+            src_len = *query_at = q - src;
         } else {
             *query_at = SIZE_MAX;
         }
     }
 
-    h2o_iovec_t decoded = decode_urlencoded(pool, path, len);
-    return rewrite_special_paths(pool, decoded.base, decoded.len);
+    /* dst can be 1 byte more than src if src is missing the prefixing '/' */
+    dst = h2o_mem_alloc_pool(pool, src_len + 1);
+    *norm_indexes = h2o_mem_alloc_pool(pool, (src_len + 1) * sizeof(*norm_indexes[0]));
+
+    if (src[0] == '/')
+        src_off++;
+    last_slash = dst_off;
+    dst[dst_off] = '/';
+    (*norm_indexes)[dst_off] = src_off;
+    dst_off++;
+
+    /* decode %xx */
+    while (src_off < src_len) {
+        int hi, lo;
+        char decoded;
+
+        if (src[src_off] == '%' && (src_off + 2 < src_len) && (hi = decode_hex(src[src_off + 1])) != -1 &&
+            (lo = decode_hex(src[src_off + 2])) != -1) {
+            decoded = (hi << 4) | lo;
+            src_off += 3;
+        } else {
+            decoded = src[src_off++];
+        }
+        if (decoded == '/') {
+            rewind = handle_special_paths(dst, dst_off, last_slash);
+            if (rewind > 0) {
+                dst_off -= rewind;
+                last_slash = dst_off - 1;
+                continue;
+            }
+            last_slash = dst_off;
+        }
+        dst[dst_off] = decoded;
+        (*norm_indexes)[dst_off] = src_off;
+        dst_off++;
+    }
+    rewind = handle_special_paths(dst, dst_off, last_slash);
+    dst_off -= rewind;
+
+    return h2o_iovec_init(dst, dst_off);
 }
 
-h2o_iovec_t h2o_url_normalize_path(h2o_mem_pool_t *pool, const char *path, size_t len, size_t *query_at)
+h2o_iovec_t h2o_url_normalize_path(h2o_mem_pool_t *pool, const char *path, size_t len, size_t *query_at, size_t **norm_indexes)
 {
     const char *p = path, *end = path + len;
     h2o_iovec_t ret;
 
-    if (len == 0 || path[0] != '/')
-        goto Rewrite;
-
     *query_at = SIZE_MAX;
+    *norm_indexes = NULL;
+
+    if (len == 0) {
+        ret = h2o_iovec_init("/", 1);
+        return ret;
+    }
+
+    if (path[0] != '/')
+        goto Rewrite;
 
     for (; p + 1 < end; ++p) {
         if ((p[0] == '/' && p[1] == '.') || p[0] == '%') {
@@ -162,7 +152,7 @@ Return:
     return ret;
 
 Rewrite:
-    ret = rebuild_path(pool, path, len, query_at);
+    ret = rebuild_path(pool, path, len, query_at, norm_indexes);
     if (ret.len == 0)
         goto RewriteError;
     if (ret.base[0] != '/')
@@ -287,8 +277,8 @@ int h2o_url_parse_relative(const char *url, size_t url_len, h2o_url_t *parsed)
         return parse_authority_and_path(p + 2, url_end, parsed);
 
     /* reset authority, host, port, and set path */
-    parsed->authority = (h2o_iovec_t){};
-    parsed->host = (h2o_iovec_t){};
+    parsed->authority = (h2o_iovec_t){NULL};
+    parsed->host = (h2o_iovec_t){NULL};
     parsed->_port = 65535;
     parsed->path = h2o_iovec_init(p, url_end - p);
 
@@ -334,7 +324,7 @@ h2o_iovec_t h2o_url_resolve(h2o_mem_pool_t *pool, const h2o_url_t *base, const h
         h2o_url_resolve_path(&base_path, &relative_path);
     } else {
         assert(relative->path.len == 0);
-        relative_path = (h2o_iovec_t){};
+        relative_path = (h2o_iovec_t){NULL};
     }
 
 Build:

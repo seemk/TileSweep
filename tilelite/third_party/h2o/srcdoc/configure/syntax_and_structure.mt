@@ -3,7 +3,9 @@
 
 <h3>Syntax</h3>
 
+<p>
 H2O uses <a href="http://www.yaml.org/">YAML</a> 1.1 as the syntax of its configuration file.
+</p>
 
 <h3 id="config_levels">Levels of Configuration</h3>
 
@@ -63,6 +65,59 @@ Certain configuration directives can be used in more than one levels.  For examp
 On the other hand <a href="configure/file_directives.html#file.dir"><code>file.dir</code></a> can only be used at the path level.
 </p>
 
+<h3 id="path-level">Path-level configuration</h3>
+
+<p>
+Values of the path-level configuration define the action(s) to be taken when the server processes a request that prefix-matches to the configured paths.
+Each entry of the mapping associated to the paths is evaluated in the order they appear.
+</p>
+
+<p>
+Consider the following example.
+When receiving a request for <code>https://example.com/foo</code>, <a href="configure/file_directives.html">the file handler</a> is first executed trying to serve a file named <code>/path/to/doc-root/foo</code> as the response.
+In case the file does not exist, then <a href="configure/fastcgi_directives.html">the FastCGI handler</a> is invoked.
+</p>
+
+<?= $ctx->{code}->(<< 'EOT')
+hosts:
+  "example.com":
+    listen:
+      port: 443
+      ssl:
+        certificate-file: etc/site1.crt
+        key-file: etc/site1.key
+    paths:
+      "/":
+        file.dir: /path/to/doc-root
+        fastcgi.connect:
+          port: /path/to/fcgi.sock
+          type: unix
+EOT
+?>
+
+<p>
+Starting from version 2.1, it is also possible to define the path-level configuration as a sequence of mappings instead of a single mapping.
+The following example is identical to the previous one.
+Notice the dashes placed before the handler directives.
+</p>
+
+<?= $ctx->{code}->(<< 'EOT')
+hosts:
+  "example.com":
+    listen:
+      port: 443
+      ssl:
+        certificate-file: etc/site1.crt
+        key-file: etc/site1.key
+    paths:
+      "/":
+        - file.dir: /path/to/doc-root
+        - fastcgi.connect:
+            port: /path/to/fcgi.sock
+            type: unix
+EOT
+?>
+
 <h3 id="yaml_alias">Using YAML Alias</h3>
 
 <p>
@@ -116,6 +171,41 @@ hosts:
       port: 443
       ssl:
         <<: *default_ssl
+        certificate-file: /path/to/example.org.crt
+        key-file:         /path/to/example.org.crt
+    paths:
+      ...
+EOT
+?>
+
+<h3 id="including_files">Including Files</h3>
+
+<p>
+Starting from version 2.1, it is possible to include a YAML file from the configuration file using <code>!file</code> custom YAML tag.
+The following example extracts the TLS configuration into <code>default_ssl.conf</code> and include it multiple times in <code>h2o.conf</code>.
+</p>
+
+<?= $ctx->{example}->('default_ssl.conf', << 'EOT')
+minimum-version: TLSv1.2
+cipher-suite: ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256
+certificate-file: /path/to/example.com.crt
+key-file:         /path/to/example.com.crt
+EOT
+?>
+
+<?= $ctx->{example}->('h2o.conf', << 'EOT')
+hosts:
+  "example.com":
+    listen:
+      port: 443
+      ssl: !file default_ssl.conf
+    paths:
+      ...
+  "example.org":
+    listen:
+      port: 443
+      ssl:
+        <<: !file default_ssl.conf
         certificate-file: /path/to/example.org.crt
         key-file:         /path/to/example.org.crt
     paths:

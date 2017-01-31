@@ -9,6 +9,10 @@ This document describes the configuration directives of the access_log handler.
 $ctx->{directive}->(
     name    => "access-log",
     levels  => [ qw(global host path extension) ],
+    see_also => render_mt(<<'EOT'),
+<a href="configure/base_directives.html#error-log"><code>error-log</code></a>
+<a href="configure/base_directives.html#error-log.emit-request-errors"><code>error-log.emit-request-errors</code></a>
+EOT
     desc    => q{The directive sets the path and optionally the format of the access log.},
 )->(sub {
 ?>
@@ -59,9 +63,9 @@ The list of format strings recognized by H2O is as follows.
 <tr><td><code>msec</code><td>number of milliseconds since Epoch
 <tr><td><code>usec</code><td>number of microseconds since Epoch
 <tr><td><code>msec_frac</code><td>millisecond fraction
-<tr><td><code>usec_frac</code><td>microsecond fration
+<tr><td><code>usec_frac</code><td>microsecond fraction
 </table>
-As an example, it is possible to log timestamps in millisecond resultion using <code>%{%Y/%m/%d:%H:%M:%S}t.%{msec_frac}t</code>, which results in a timestamp like <code>2006-01-02:15:04:05.000</code>.
+As an example, it is possible to log timestamps in millisecond resolution using <code>%{%Y/%m/%d:%H:%M:%S}t.%{msec_frac}t</code>, which results in a timestamp like <code>2006-01-02:15:04:05.000</code>.
 <tr><td><code>%U</code><td>requested URL path, not including the query string
 <tr><td><code>%u</code><td>remote user if the request was authenticated (always <code>-</code>)
 <tr><td><code>%V</code><td>requested server name (or the default server name if not specified by the client)
@@ -97,6 +101,11 @@ As an example, it is possible to log timestamps in millisecond resultion using <
 <tr><td><code>http2.priority.received.exclusive</code><td>exclusive bit of the most recent priority specified by the client
 <tr><td><code>http2.priority.received.parent</code><td>parent stream ID of the most recent priority specified by the client
 <tr><td><code>http2.priority.received.weight</code><td>weight of the most recent priority specified by the client
+</table>
+<table>
+<caption>Miscellaneous</caption>
+<tr><th>Name<th>Description
+<tr><td><code>error</code><td>request-level errors. Unless specified otherwise by using the <a href="configure/base_directives.html#error-log.emit-request-errors"><code>error-log.emit-request-errors</code></a> directive, the same messages are emitted to the <a href="configure/base_directives.html#error-log">error-log</a>. (since v2.1)
 </table>
 </table>
 

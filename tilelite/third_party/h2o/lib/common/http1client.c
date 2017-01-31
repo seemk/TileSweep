@@ -163,7 +163,18 @@ static void on_body_chunked(h2o_socket_t *sock, const char *err)
     h2o_timeout_unlink(&client->_timeout);
 
     if (err != NULL) {
-        on_body_error(client, "I/O error (body; chunked)");
+        if (err == h2o_socket_error_closed && !phr_decode_chunked_is_in_data(&client->_body_decoder.chunked.decoder)) {
+            /*
+             * if the peer closed after a full chunk, treat this
+             * as if the transfer had complete, browsers appear to ignore
+             * a missing 0\r\n chunk
+             */
+            client->_can_keepalive = 0;
+            client->_cb.on_body(&client->super, h2o_http1client_error_is_eos);
+            close_client(client);
+        } else {
+            on_body_error(client, "I/O error (body; chunked)");
+        }
         return;
     }
 
@@ -239,11 +250,27 @@ static void on_head(h2o_socket_t *sock, const char *err)
         return;
     }
 
+    /* convert the header names to lowercase */
+    for (i = 0; i != num_headers; ++i)
+        h2o_strtolower((char *)headers[i].name, headers[i].name_len);
+
+    /* handle 1xx response (except 101, which is handled by on_head callback) */
+    if (100 <= http_status && http_status <= 199 && http_status != 101) {
+        if (client->super.informational_cb != NULL &&
+            client->super.informational_cb(&client->super, minor_version, http_status, h2o_iovec_init(msg, msg_len),
+                                           (void *)headers, num_headers) != 0) {
+            close_client(client);
+            return;
+        }
+        h2o_buffer_consume(&client->super.sock->input, rlen);
+        h2o_timeout_link(client->super.ctx->loop, client->super.ctx->io_timeout, &client->_timeout);
+        return;
+    }
+
     /* parse the headers */
     reader = on_body_until_close;
     client->_can_keepalive = minor_version >= 1;
     for (i = 0; i != num_headers; ++i) {
-        h2o_strtolower((char *)headers[i].name, headers[i].name_len);
         if (h2o_memis(headers[i].name, headers[i].name_len, H2O_STRLIT("connection"))) {
             if (h2o_contains_token(headers[i].value, headers[i].value_len, H2O_STRLIT("keep-alive"), ',')) {
                 client->_can_keepalive = 1;
@@ -273,7 +300,7 @@ static void on_head(h2o_socket_t *sock, const char *err)
     }
 
     /* RFC 2616 4.4 */
-    if (client->_method_is_head || ((100 <= http_status && http_status <= 199) || http_status == 204 || http_status == 304)) {
+    if (client->_method_is_head || http_status == 101 || http_status == 204 || http_status == 304) {
         is_eos = 1;
     } else {
         is_eos = 0;
@@ -284,7 +311,7 @@ static void on_head(h2o_socket_t *sock, const char *err)
 
     /* call the callback */
     client->_cb.on_body = client->_cb.on_head(&client->super, is_eos ? h2o_http1client_error_is_eos : NULL, minor_version,
-                                              http_status, h2o_iovec_init(msg, msg_len), headers, num_headers);
+                                              http_status, h2o_iovec_init(msg, msg_len), (void *)headers, num_headers);
     if (is_eos) {
         close_client(client);
         return;
@@ -361,7 +388,8 @@ static void on_handshake_complete(h2o_socket_t *sock, const char *err)
 
     if (err == NULL) {
         /* success */
-    } else if (err == h2o_socket_error_ssl_cert_name_mismatch && (client->super.ctx->ssl_ctx->verify_mode & SSL_VERIFY_PEER) == 0) {
+    } else if (err == h2o_socket_error_ssl_cert_name_mismatch &&
+               (SSL_CTX_get_verify_mode(client->super.ctx->ssl_ctx) & SSL_VERIFY_PEER) == 0) {
         /* peer verification skipped */
     } else {
         on_connect_error(client, err);
@@ -445,7 +473,7 @@ static struct st_h2o_http1client_private_t *create_client(h2o_http1client_t **_c
 {
     struct st_h2o_http1client_private_t *client = h2o_mem_alloc(sizeof(*client));
 
-    *client = (struct st_h2o_http1client_private_t){{ctx, {}}};
+    *client = (struct st_h2o_http1client_private_t){{ctx}};
     if (ssl_server_name.base != NULL)
         client->super.ssl.server_name = h2o_strdup(NULL, ssl_server_name.base, ssl_server_name.len).base;
     client->super.data = data;
@@ -471,7 +499,8 @@ void h2o_http1client_connect(h2o_http1client_t **_client, void *data, h2o_http1c
     h2o_timeout_link(ctx->loop, ctx->io_timeout, &client->_timeout);
 
     { /* directly call connect(2) if `host` is an IP address */
-        struct sockaddr_in sin = {};
+        struct sockaddr_in sin;
+        memset(&sin, 0, sizeof(sin));
         if (h2o_hostinfo_aton(host, &sin.sin_addr) == 0) {
             sin.sin_family = AF_INET;
             sin.sin_port = htons(port);

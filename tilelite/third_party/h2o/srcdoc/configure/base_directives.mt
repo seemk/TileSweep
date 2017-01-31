@@ -80,7 +80,7 @@ When H2O receives a request that exactly matches to an entry in paths that does 
 </p>
 <p>
 Since 2.0, it depends on the handler of the path whether if a 301 redirect that appends a slash is returned.
-Server administartors can take advantage of this change to define per-path configurations (see the examples in <a href="configure/file_directives.html#file.file"><code>file.file</code></a> and the <a href="configure/fastcgi_directives.html">FastCGI handler</a>).
+Server administrators can take advantage of this change to define per-path configurations (see the examples in <a href="configure/file_directives.html#file.file"><code>file.file</code></a> and the <a href="configure/fastcgi_directives.html">FastCGI handler</a>).
 <a href="configure/file_directives.html#file.dir"><code>file.dir</code></a> is an exception that continues to perform the redirection; in case of the example above, access to <code>/assets</code> is redirected to <code>/assets/</code>.
 </p>
 ? })
@@ -179,7 +179,7 @@ Default is <code>client</code>.
 </dd>
 <dt id="dh-file">dh-file:</dt>
 <dd>
-path of a PEM file containing the Diffie-Hellman paratemers to be used.
+path of a PEM file containing the Diffie-Hellman parameters to be used.
 Use of the file is recommended for servers using Diffie-Hellman key agreement.
 (optional)
 </dd>
@@ -195,7 +195,7 @@ Default is 3.
 </dd>
 <dt id="neverbleed">neverbleed:</dt>
 <dd>
-unless set to <code>OFF</code>, H2O isolates RSA private key operations to an islotated process by using <a href="https://github.com/h2o/neverbleed">Neverbleed</a>.
+unless set to <code>OFF</code>, H2O isolates RSA private key operations to an isolated process by using <a href="https://github.com/h2o/neverbleed">Neverbleed</a>.
 Default is <code>ON</code>.
 </dl>
 <p>
@@ -226,7 +226,7 @@ If omitted, the socket file will be owned by the launching user.
 </dd>
 <dt>permission</dt>
 <dd>
-an octal number specifying the permission of the sokcet file.
+an octal number specifying the permission of the socket file.
 Many operating systems require write permission for connecting to the socket file.
 If omitted, the permission of the socket file will reflect the umask of the calling process.
 </dd>
@@ -245,6 +245,9 @@ EOT
 $ctx->{directive}->(
     name   => "error-log",
     levels => [ qw(global) ],
+    see_also => render_mt(<<'EOT'),
+<a href="configure/base_directives.html#error-log.emit-request-errors"><code>error-log.emit-request-errors</code></a>
+EOT
     desc   => q{Path of the file to which error logs should be appended.},
 )->(sub {
 ?>
@@ -262,6 +265,22 @@ EOT
 error-log: "| rotatelogs /path/to/error-log-file.%Y%m%d 86400"
 EOT
 ?>
+? })
+
+<?
+$ctx->{directive}->(
+    name    => "error-log.emit-request-errors",
+    levels  => [ qw(global host path extension) ],
+    since   => "2.1",
+    see_also => render_mt(<<'EOT'),
+<a href="configure/access_log_directives.html#access-log"><code>access-log</code></a>
+<a href="configure/base_directives.html#error-log"><code>error-log</code></a>
+EOT
+    default => "error-log.emit-request-errors: ON",
+    desc    => q{Sets whether if request-level errors should be emitted to the error log.},
+)->(sub {
+?>
+By setting the value to <code>OFF</code> and by using the <code>%{error}x</code> specifier of the <a href="configure/access_log_directives.html">access-log</a> directive, it is possible to log request-level errors only to the access log.
 ? })
 
 <?
@@ -599,6 +618,28 @@ $ctx->{directive}->(
 <p>
 If the directive is omitted and if the server is started under root privileges, the server will attempt to <code>setuid</code> to <code>nobody</code>.
 </p>
+? })
+
+<?
+$ctx->{directive}->(
+    name   => "crash-handler",
+    levels => [ qw(global) ],
+    desc   => q{Script to invoke if <code>h2o</code> receives a fatal signal.},
+    default  => q{crash-handler: "${H2O_ROOT}/share/h2o/annotate-backtrace-symbols"},
+    since    => "2.1",
+)->(sub {
+?>
+<p>Note: this feature is only available when linking to the GNU libc.</p>
+
+<p>The script is invoked if one of the <code>SIGABRT</code>,
+<code>SIGBUS</code>, <code>SIGFPE</code>, <code>SIGILL</code> or
+<code>SIGSEGV</code> signals is received by <code>h2o</code>.</p>
+
+<p><code>h2o</code> writes the backtrace as provided by
+<code>backtrace()</code> and <code>backtrace_symbols_fd</code> to the
+standard input of the program.</p>
+
+<p>If the path is not absolute, it is prefixed with <code>${H2O_ROOT}/</code>.</p>
 ? })
 
 ? })

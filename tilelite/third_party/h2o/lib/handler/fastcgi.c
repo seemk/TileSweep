@@ -206,7 +206,7 @@ static void append_address_info(h2o_req_t *req, iovec_vector_t *vecs, const char
 
 static int envname_is_headername(const h2o_iovec_t *env, const h2o_iovec_t *header)
 {
-    const char *ep , *hp, *hend;
+    const char *ep, *hp, *hend;
 
     if (env->len != 5 + header->len)
         return 0;
@@ -220,7 +220,7 @@ static int envname_is_headername(const h2o_iovec_t *env, const h2o_iovec_t *head
 
 static void append_params(h2o_req_t *req, iovec_vector_t *vecs, h2o_fastcgi_config_vars_t *config)
 {
-    h2o_iovec_t path_info = {};
+    h2o_iovec_t path_info = {NULL};
 
     /* CONTENT_LENGTH */
     if (req->entity.base != NULL) {
@@ -319,8 +319,7 @@ static void append_params(h2o_req_t *req, iovec_vector_t *vecs, h2o_fastcgi_conf
                 for (; src != src_end; ++src)
                     *dst++ = *src == '-' ? '_' : h2o_toupper(*src);
             }
-        NextHeader:
-            ;
+        NextHeader:;
         }
         if (cookie_length != 0) {
             /* emit the cookie merged */
@@ -382,7 +381,7 @@ static void annotate_params(h2o_mem_pool_t *pool, iovec_vector_t *vecs, unsigned
 static void build_request(h2o_req_t *req, iovec_vector_t *vecs, unsigned request_id, size_t max_record_size,
                           h2o_fastcgi_config_vars_t *config)
 {
-    *vecs = (iovec_vector_t){};
+    *vecs = (iovec_vector_t){NULL};
 
     /* first entry is FCGI_BEGIN_REQUEST */
     h2o_vector_reserve(&req->pool, vecs, 5 /* we send at least 5 iovecs */);
@@ -458,7 +457,7 @@ static void do_send(struct st_fcgi_generator_t *generator)
             return;
         is_final = 0;
     }
-    h2o_send(generator->req, vecs, veccnt, is_final);
+    h2o_send(generator->req, vecs, veccnt, is_final ? H2O_SEND_STATE_FINAL : H2O_SEND_STATE_IN_PROGRESS);
 }
 
 static void send_eos_and_close(struct st_fcgi_generator_t *generator, int can_keepalive)
@@ -483,7 +482,7 @@ static void errorclose(struct st_fcgi_generator_t *generator)
     } else {
         h2o_req_t *req = generator->req;
         close_generator(generator);
-        h2o_send_error(req, 503, "Internal Server Error", "Internal Server Error", 0);
+        h2o_send_error_503(req, "Internal Server Error", "Internal Server Error", 0);
     }
 }
 
@@ -777,7 +776,7 @@ static int on_req(h2o_handler_t *_handler, h2o_req_t *req)
     generator->sent_headers = 0;
     h2o_doublebuffer_init(&generator->resp.sending, &h2o_socket_buffer_prototype);
     h2o_buffer_init(&generator->resp.receiving, &h2o_socket_buffer_prototype);
-    generator->timeout = (h2o_timeout_entry_t){};
+    generator->timeout = (h2o_timeout_entry_t){0};
 
     set_timeout(generator, &generator->ctx->io_timeout, on_connect_timeout);
     h2o_socketpool_connect(&generator->connect_req, &handler->sockpool, req->conn->ctx->loop,

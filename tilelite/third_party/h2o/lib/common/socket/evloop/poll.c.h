@@ -59,8 +59,7 @@ static void update_socks(struct st_h2o_evloop_poll_t *loop)
                 DEBUG_LOG("clearing READ for fd: %d\n", sock->fd);
                 sock->_flags &= ~H2O_SOCKET_FLAG_IS_POLLED_FOR_READ;
             }
-            if (h2o_socket_is_writing(&sock->super) &&
-                (sock->_wreq.cnt != 0 || (sock->_flags & H2O_SOCKET_FLAG_DONT_WRITE) != 0)) {
+            if (h2o_socket_is_writing(&sock->super)) {
                 DEBUG_LOG("setting WRITE for fd: %d\n", sock->fd);
                 sock->_flags |= H2O_SOCKET_FLAG_IS_POLLED_FOR_WRITE;
             } else {
@@ -75,7 +74,7 @@ static void update_socks(struct st_h2o_evloop_poll_t *loop)
 int evloop_do_proceed(h2o_evloop_t *_loop, int32_t max_wait)
 {
     struct st_h2o_evloop_poll_t *loop = (struct st_h2o_evloop_poll_t *)_loop;
-    H2O_VECTOR(struct pollfd) pollfds = {};
+    H2O_VECTOR(struct pollfd) pollfds = {NULL};
     int fd, ret;
 
     /* update status */
@@ -111,6 +110,7 @@ int evloop_do_proceed(h2o_evloop_t *_loop, int32_t max_wait)
     /* update readable flags, perform writes */
     if (ret > 0) {
         size_t i;
+        h2o_sliding_counter_start(&loop->super.exec_time_counter, loop->super._now);
         for (i = 0; i != pollfds.size; ++i) {
             /* set read_ready flag before calling the write cb, since app. code invoked by the latter may close the socket, clearing
              * the former flag */

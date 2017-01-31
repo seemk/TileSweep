@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use Digest::SHA1 qw(sha1_base64);
+use Digest::SHA qw(sha1_base64);
 use Plack::App::File;
 use Plack::Builder;
 use Plack::Request;
@@ -161,5 +161,18 @@ builder {
         }
         close $fh;
         exit 0;
+    };
+    mount "/1xx-push" => sub {
+        my $env = shift;
+        my $fh = $env->{"psgix.io"};
+        print $fh join(
+            "\r\n",
+            "HTTP/1.1 100 Continue",
+            "link: </index.js>; rel=preload",
+            "",
+            "",
+        );
+        sleep 1.1;
+        [200, ["content-type" => "text/plain; charset=utf-8", "content-length" => 11], ["hello world"]];
     };
 };

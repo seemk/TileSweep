@@ -216,7 +216,7 @@ int h2o_cache_set(h2o_cache_t *cache, uint64_t now, h2o_iovec_t key, h2o_cache_h
 
     /* create newref */
     newref = h2o_mem_alloc(sizeof(*newref));
-    *newref = (h2o_cache_ref_t){h2o_strdup(NULL, key.base, key.len), keyhash, now, value, 0, {}, {}, 1};
+    *newref = (h2o_cache_ref_t){h2o_strdup(NULL, key.base, key.len), keyhash, now, value, 0, {NULL}, {NULL}, 1};
 
     lock_cache(cache);
 
@@ -260,4 +260,14 @@ void h2o_cache_delete(h2o_cache_t *cache, uint64_t now, h2o_iovec_t key, h2o_cac
         erase_ref(cache, iter, 0);
 
     unlock_cache(cache);
+}
+
+size_t h2o_cache_get_capacity(h2o_cache_t *cache)
+{
+    return cache->capacity;
+}
+
+uint64_t h2o_cache_get_duration(h2o_cache_t *cache)
+{
+    return cache->duration;
 }

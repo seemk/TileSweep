@@ -4,11 +4,13 @@
 #include "test_poly_fill.c"
 #include "test_math.c"
 #include "test_queue.c"
+#include "test_query_parse.c"
 
 static const char* all() {
   mu_run_test(test_poly_fill);
   mu_run_test(test_math);
   mu_run_test(test_queue);
+  mu_run_test(test_query_parse);
   return NULL;
 }
 

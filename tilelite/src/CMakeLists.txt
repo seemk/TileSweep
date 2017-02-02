@@ -47,6 +47,7 @@ add_executable(tests
   tc_queue.c
   test/tests.c
   tl_math.c
+  query.c
 )
 
 target_link_libraries(tests

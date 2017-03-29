@@ -48,7 +48,6 @@ int32_t tilelite_stats_remove_prerender(tilelite_stats* stats,
 
   int32_t removed = 0;
   if (stats->prerenders) {
-    const int32_t capacity = stb__sbm(stats->prerenders);
     const int32_t length = sb_count(stats->prerenders);
     int32_t rem_idx = -1;
 

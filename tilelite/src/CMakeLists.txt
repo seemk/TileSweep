@@ -50,6 +50,9 @@ add_executable(tests
   query.c
 )
 
+ADD_DEPENDENCIES(tilelite libh2o libh2o-evloop)
+ADD_DEPENDENCIES(tests libh2o libh2o-evloop)
+
 target_link_libraries(tests
   m
 )

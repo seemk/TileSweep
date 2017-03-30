@@ -53,7 +53,6 @@ OPTION(WITH_BUNDLED_SSL "whether or not to use the bundled libressl" ON)
 OPTION(WITHOUT_LIBS "skip building libs even when possible" OFF)
 OPTION(BUILD_SHARED_LIBS "whether to build a shared library" OFF)
 
-message(STATUS "BUNDLED SSL? ${WITH_BUNDLED_SSL}")
 IF (WITH_BUNDLED_SSL)
     SET(BUNDLED_SSL_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/libressl-build/include")
     SET(H2O_SSL_INCLUDE_DIR ${BUNDLED_SSL_INCLUDE_DIR} PARENT_SCOPE)

@@ -65,14 +65,7 @@ static void* pool_task(void* arg) {
           tc_task_destroy(t);
           break;
         }
-        case TASK_SINGLEWAIT: {
-          pthread_mutex_lock(&t->lock);
-          t->execute(t->arg, &extra);
-          pthread_cond_signal(&t->cv);
-          pthread_mutex_unlock(&t->lock);
-          break;
-        }
-        case TASK_MULTIWAIT: {
+        case TASK_WAIT: {
           t->execute(t->arg, &extra);
           tc_sema_post(t->waitall_sema, 1);
           break;
@@ -119,18 +112,7 @@ taskpool* taskpool_create(int32_t threads) {
 }
 
 void taskpool_wait(taskpool* pool, tc_task* t, task_priority priority) {
-  t->type = TASK_SINGLEWAIT;
-  assert(pthread_mutex_init(&t->lock, NULL) == 0);
-  assert(pthread_cond_init(&t->cv, NULL) == 0);
-
-  pool_add_task(pool, t, priority);
-  pthread_mutex_lock(&t->lock);
-  tc_sema_post(&pool->sema, 1);
-  pthread_cond_wait(&t->cv, &t->lock);
-  pthread_mutex_unlock(&t->lock);
-
-  pthread_mutex_destroy(&t->lock);
-  pthread_cond_destroy(&t->cv);
+  taskpool_wait_all(pool, &t, 1, priority);
 }
 
 void taskpool_post(taskpool* pool, tc_task* t, task_priority priority) {
@@ -146,7 +128,7 @@ void taskpool_wait_all(taskpool* pool, tc_task** tasks, int32_t count,
 
   for (int32_t i = 0; i < count; i++) {
     tc_task* t = tasks[i];
-    t->type = TASK_MULTIWAIT;
+    t->type = TASK_WAIT;
     t->waitall_sema = &wait_sema;
     pool_add_task(pool, t, priority);
   }

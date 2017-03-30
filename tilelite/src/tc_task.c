@@ -1,5 +1,4 @@
 #include "tc_task.h"
-#include <assert.h>
 #include <stdlib.h>
 
 tc_task* tc_task_create(tc_task_fn execute, void* arg) {

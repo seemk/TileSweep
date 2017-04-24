@@ -7,11 +7,21 @@
 #include "tl_log.h"
 
 image_db* image_db_open(const char* db_file) {
+  image_db* db = (image_db*)calloc(1, sizeof(image_db));
+  if (!image_db_init(db, db_file)) {
+    free(db);
+    return NULL;
+  }
+
+  return db;
+}
+
+int32_t image_db_init(image_db* db, const char* db_file) {
   sqlite3* sqlite_db = NULL;
   int res = sqlite3_open(db_file, &sqlite_db);
 
   if (res != SQLITE_OK) {
-    return NULL;
+    return 0;
   }
 
   char* err_msg = NULL;
@@ -34,7 +44,7 @@ image_db* image_db_open(const char* db_file) {
   if (res != SQLITE_OK) {
     tl_log("%s", err_msg);
     sqlite3_close_v2(sqlite_db);
-    return NULL;
+    return 0;
   }
 
   sqlite3_stmt* fetch_query = NULL;
@@ -48,7 +58,7 @@ image_db* image_db_open(const char* db_file) {
   if (res != SQLITE_OK) {
     tl_log("%s", sqlite3_errmsg(sqlite_db));
     sqlite3_close_v2(sqlite_db);
-    return NULL;
+    return 0;
   }
 
   sqlite3_stmt* insert_position = NULL;
@@ -58,23 +68,27 @@ image_db* image_db_open(const char* db_file) {
   if (res != SQLITE_OK) {
     tl_log("%s", sqlite3_errmsg(sqlite_db));
     sqlite3_close_v2(sqlite_db);
-    return NULL;
+    return 0;
   }
 
   sqlite3_stmt* insert_image = NULL;
   sqlite3_prepare_v2(sqlite_db,
-      "INSERT OR IGNORE INTO image VALUES (?, ?, ?, ?)",
-      -1, &insert_image, NULL);
+                     "INSERT OR IGNORE INTO image VALUES (?, ?, ?, ?)", -1,
+                     &insert_image, NULL);
 
-  image_db* db = (image_db*)calloc(1, sizeof(image_db));
+  sqlite3_stmt* existing_pos = NULL;
+  sqlite3_prepare_v2(sqlite_db,
+                     "SELECT count(*) FROM tile WHERE location_hash = ?", -1,
+                     &existing_pos, NULL);
+
   db->db = sqlite_db;
   db->fetch_query = fetch_query;
   db->insert_position = insert_position;
   db->insert_image = insert_image;
+  db->existing_position = existing_pos;
 
   sqlite3_busy_timeout(sqlite_db, 2000);
-
-  return db;
+  return 1;
 }
 
 void image_db_close(image_db* db) {
@@ -131,6 +145,21 @@ int32_t image_db_add_position(image_db* db, uint64_t position_hash,
   }
 
   return res == SQLITE_DONE ? 1 : 0;
+}
+
+int32_t image_db_exists(image_db* db, uint64_t position_hash) {
+  sqlite3_stmt* query = db->existing_position; 
+
+  sqlite3_reset(query);
+  sqlite3_bind_int64(query, 1, position_hash);
+
+  int res = sqlite3_step(query);
+
+  if (res == SQLITE_ROW) {
+    return sqlite3_column_int(query, 0);
+  }
+
+  return 0;
 }
 
 int32_t image_db_add_image(image_db* db, const image* img,

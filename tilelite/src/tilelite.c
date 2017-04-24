@@ -34,6 +34,7 @@ typedef struct {
   taskpool* task_pool;
   tl_write_queue* write_queue;
   tile_renderer** renderers;
+  image_db* db_conns;
   tilelite_stats* stats;
   atomic_ulong job_id_counter;
 } tilelite_shared_ctx;
@@ -142,6 +143,12 @@ static void* render_tile_background(void* arg,
   prerender_job_stats* stats = args->stats;
 
   const int32_t thread_idx = extra->executing_thread_idx;
+  image_db* db = &shared->db_conns[thread_idx];
+  if (image_db_exists(db, tile_hash(&args->t))) {
+    tl_log("background render; tile [%d, %d, %d] exists", args->t.x, args->t.y,
+           args->t.z);
+    goto bg_render_finish;
+  }
   tile_renderer* renderer = shared->renderers[thread_idx];
 
   int32_t success = render_tile(renderer, &args->t, &args->img);
@@ -160,6 +167,7 @@ static void* render_tile_background(void* arg,
     }
   }
 
+bg_render_finish:
   atomic_fetch_add(&stats->current_tiles, 1);
 
   if (atomic_load(&stats->indice_calcs_remain) == 0 &&
@@ -570,6 +578,7 @@ int main(int argc, char** argv) {
   shared->write_queue = tl_write_queue_create(image_db_open(opt.database));
   shared->renderers =
       (tile_renderer**)calloc(shared->num_task_threads, sizeof(tile_renderer*));
+
   shared->stats = tilelite_stats_create();
   atomic_init(&shared->job_id_counter, 1);
 
@@ -580,9 +589,15 @@ int main(int argc, char** argv) {
       shared->num_task_threads, sizeof(renderer_create_args));
 
   if (shared->rendering_enabled) {
+    shared->db_conns =
+        (image_db*)calloc(shared->num_task_threads, sizeof(image_db));
     for (int32_t i = 0; i < shared->num_task_threads; i++) {
       rc_args[i] = (renderer_create_args){
           .options = &opt, .shared = shared, .renderer_idx = i};
+      if (!image_db_init(&shared->db_conns[i], opt.database)) {
+        tl_log("failed to open image db %d %s", i, opt.database);
+        return 1;
+      }
 
       tc_task* t = tc_task_create(setup_renderer, &rc_args[i]);
       startup_tasks[i] = t;

@@ -154,8 +154,6 @@ int32_t image_db_exists(image_db* db, uint64_t position_hash) {
   sqlite3_reset(query);
   sqlite3_bind_int64(query, 1, position_hash);
 
-  int res = sqlite3_step(query);
-
   int32_t count = 0;
   while (sqlite3_step(query) == SQLITE_ROW) {
     count += sqlite3_column_int(query, 0);

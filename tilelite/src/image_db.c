@@ -26,6 +26,7 @@ int32_t image_db_init(image_db* db, const char* db_file) {
 
   char* err_msg = NULL;
   sqlite3_exec(sqlite_db, "PRAGMA journal_mode=WAL", NULL, NULL, &err_msg);
+  sqlite3_wal_autocheckpoint(sqlite_db, 0);
 
   res = sqlite3_exec(
       sqlite_db,
@@ -148,18 +149,19 @@ int32_t image_db_add_position(image_db* db, uint64_t position_hash,
 }
 
 int32_t image_db_exists(image_db* db, uint64_t position_hash) {
-  sqlite3_stmt* query = db->existing_position; 
+  sqlite3_stmt* query = db->existing_position;
 
   sqlite3_reset(query);
   sqlite3_bind_int64(query, 1, position_hash);
 
   int res = sqlite3_step(query);
 
-  if (res == SQLITE_ROW) {
-    return sqlite3_column_int(query, 0);
+  int32_t count = 0;
+  while (sqlite3_step(query) == SQLITE_ROW) {
+    count += sqlite3_column_int(query, 0);
   }
 
-  return 0;
+  return count;
 }
 
 int32_t image_db_add_image(image_db* db, const image* img,
@@ -181,7 +183,7 @@ int32_t image_db_add_image(image_db* db, const image* img,
     if (db->inserts >= 1024) {
       tl_log("image db WAL checkpoint begin");
       int wal_res = sqlite3_wal_checkpoint_v2(
-          db->db, NULL, SQLITE_CHECKPOINT_TRUNCATE, NULL, NULL);
+          db->db, NULL, SQLITE_CHECKPOINT_RESTART, NULL, NULL);
       if (wal_res == SQLITE_OK) {
         db->inserts = 0;
         tl_log("image db WAL checkpoint done");

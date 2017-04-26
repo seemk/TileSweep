@@ -2,11 +2,13 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include "tc_queue.h"
-#include "tl_time.h"
 #include "tc_sema.h"
+#include "tl_log.h"
+#include "tl_time.h"
 
 struct tl_write_queue {
   tc_queue write_queue;
+  int32_t full_threshold;
   pthread_t write_thread;
   pthread_mutex_t lock;
   tc_sema sema;
@@ -19,8 +21,20 @@ static void* commit_pending(void* arg) {
   for (;;) {
     tc_sema_wait(&q->sema);
 
-    write_task task;
     pthread_mutex_lock(&q->lock);
+    if (q->write_queue.length >= q->full_threshold) {
+      tl_log("write queue full, begin clear");
+      write_task task;
+      while (tc_queue_pop(&q->write_queue, &task)) {
+        if (image_db_add_image(q->db, &task.img, task.image_hash)) {
+          image_db_add_position(q->db, tile_hash(&task.tile), task.image_hash);
+        }
+        free(task.img.data);
+      }
+      tl_log("write queue clear done");
+    }
+
+    write_task task;
     int32_t success = tc_queue_pop(&q->write_queue, &task);
     pthread_mutex_unlock(&q->lock);
 
@@ -37,6 +51,7 @@ tl_write_queue* tl_write_queue_create(image_db* db) {
   tl_write_queue* q = (tl_write_queue*)calloc(1, sizeof(tl_write_queue));
   q->db = db;
   tc_queue_init(&q->write_queue, sizeof(write_task));
+  q->full_threshold = 1024;
   pthread_mutex_init(&q->lock, NULL);
   tc_sema_init(&q->sema, 0);
   pthread_create(&q->write_thread, NULL, commit_pending, q);

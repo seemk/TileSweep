@@ -143,12 +143,14 @@ static void* render_tile_background(void* arg,
   prerender_job_stats* stats = args->stats;
 
   const int32_t thread_idx = extra->executing_thread_idx;
+
   image_db* db = &shared->db_conns[thread_idx];
   if (image_db_exists(db, tile_hash(&args->t))) {
     tl_log("background render; tile [%d, %d, %d] exists", args->t.x, args->t.y,
            args->t.z);
     goto bg_render_finish;
   }
+
   tile_renderer* renderer = shared->renderers[thread_idx];
 
   int32_t success = render_tile(renderer, &args->t, &args->img);

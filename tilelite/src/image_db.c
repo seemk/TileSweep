@@ -130,24 +130,6 @@ int32_t image_db_fetch(const image_db* db, uint64_t position_hash, int width,
   return 0;
 }
 
-int32_t image_db_add_position(image_db* db, uint64_t position_hash,
-                              uint64_t image_hash) {
-  sqlite3_stmt* query = db->insert_position;
-
-  sqlite3_reset(query);
-
-  sqlite3_bind_int64(query, 1, position_hash);
-  sqlite3_bind_int64(query, 2, image_hash);
-
-  int res = sqlite3_step(query);
-
-  if (res != SQLITE_DONE) {
-    tl_log("add position failed %d: %s", res, sqlite3_errstr(res));
-  }
-
-  return res == SQLITE_DONE ? 1 : 0;
-}
-
 int32_t image_db_exists(image_db* db, uint64_t position_hash) {
   sqlite3_stmt* query = db->existing_position;
 
@@ -162,36 +144,68 @@ int32_t image_db_exists(image_db* db, uint64_t position_hash) {
   return count;
 }
 
-int32_t image_db_add_image(image_db* db, const image* img,
-                           uint64_t image_hash) {
-  sqlite3_stmt* query = db->insert_image;
+int32_t image_db_insert_batch(image_db* db, const image_db_insert* inserts,
+                              int32_t count) {
+  sqlite3_stmt* insert_image = db->insert_image;
+  sqlite3_stmt* insert_position = db->insert_position;
 
-  sqlite3_reset(query);
+  sqlite3_reset(insert_image);
+  sqlite3_reset(insert_position);
 
-  sqlite3_bind_int64(query, 1, image_hash);
-  sqlite3_bind_blob(query, 2, img->data, img->len, SQLITE_STATIC);
-  sqlite3_bind_int(query, 3, img->width);
-  sqlite3_bind_int(query, 4, img->height);
+  char* err = NULL;
+  sqlite3_exec(db->db, "BEGIN", NULL, NULL, &err);
 
-  int res = sqlite3_step(query);
-
-  if (res == SQLITE_DONE) {
-    db->inserts++;
-
-    if (db->inserts >= 1024) {
-      tl_log("image db WAL checkpoint begin");
-      int wal_res = sqlite3_wal_checkpoint_v2(
-          db->db, NULL, SQLITE_CHECKPOINT_RESTART, NULL, NULL);
-      if (wal_res == SQLITE_OK) {
-        db->inserts = 0;
-        tl_log("image db WAL checkpoint done");
-      } else {
-        tl_log("image db WAL checkpoint failed: %s", sqlite3_errmsg(db->db));
-      }
-    }
-  } else {
-    tl_log("add image failed %d: %s", res, sqlite3_errstr(res));
+  if (err) {
+    tl_log("failed to start image batch insert transaction: %s", err);
+    sqlite3_free(err);
+    return 0;
   }
 
-  return res == SQLITE_DONE ? 1 : 0;
+  for (int32_t i = 0; i < count; i++) {
+    const image_db_insert* insert = &inserts[i];
+
+    sqlite3_reset(insert_image);
+    sqlite3_reset(insert_position);
+
+    sqlite3_bind_int64(insert_image, 1, insert->image_hash);
+    sqlite3_bind_blob(insert_image, 2, insert->img.data, insert->img.len,
+                      SQLITE_STATIC);
+    sqlite3_bind_int(insert_image, 3, insert->img.width);
+    sqlite3_bind_int(insert_image, 4, insert->img.height);
+
+    sqlite3_bind_int64(insert_position, 1, insert->position_hash);
+    sqlite3_bind_int64(insert_position, 2, insert->image_hash);
+
+    if (sqlite3_step(insert_image) != SQLITE_DONE) {
+      tl_log("insert image step failed");
+    }
+
+    if (sqlite3_step(insert_position) != SQLITE_DONE) {
+      tl_log("insert position step failed");
+    }
+  }
+
+  sqlite3_exec(db->db, "COMMIT", NULL, NULL, &err);
+
+  db->inserts += count;
+
+  if (db->inserts >= 1024) {
+    tl_log("image db WAL checkpoint begin");
+    int wal_res = sqlite3_wal_checkpoint_v2(
+        db->db, NULL, SQLITE_CHECKPOINT_RESTART, NULL, NULL);
+    if (wal_res == SQLITE_OK) {
+      db->inserts = 0;
+      tl_log("image db WAL checkpoint done");
+    } else {
+      tl_log("image db WAL checkpoint failed: %s", sqlite3_errmsg(db->db));
+    }
+  }
+
+  if (err) {
+    tl_log("failed to end image batch insert transaction: %s", err);
+    sqlite3_free(err);
+    return 0;
+  }
+
+  return 1;
 }

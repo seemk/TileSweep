@@ -1,6 +1,7 @@
 #include "tilelite.h"
 #include <fcntl.h>
 #include <h2o.h>
+#include <inttypes.h>
 #include <signal.h>
 #include "cpu.h"
 #include "hash/xxhash.h"
@@ -439,7 +440,7 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
     tl_log("[%d, %d, %d, %d, %d] (%d bytes) | %.2f ms [cache: %d]", t.w, t.h,
            t.z, t.x, t.y, img.len, req_time / 1000.0, existing);
   } else {
-    tl_log("[%d, %d, %d, %d, %d] (%d bytes) | %lld us [cache: %d]", t.w, t.h,
+    tl_log("[%d, %d, %d, %d, %d] (%d bytes) | %" PRId64 " us [cache: %d]", t.w, t.h,
            t.z, t.x, t.y, img.len, req_time, existing);
   }
 

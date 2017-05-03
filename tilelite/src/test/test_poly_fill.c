@@ -92,7 +92,6 @@ static const char* poly_fill_stateful(const vec2d* poly, int32_t poly_len,
   fill_poly_state state;
   fill_poly_state_init(&state, poly, poly_len);
 
-  int32_t batch_bytes = batch_size * sizeof(vec2d);
   int32_t total_batches =
       (int32_t)ceil((double)expected_len / (double)batch_size);
 

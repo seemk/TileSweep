@@ -37,9 +37,11 @@ add_executable(tilelite
   query.c
 )
 
-if (NOT WITH_MAPNIK)
+if (WITH_MAPNIK)
+  set(ICU_LIB "icuuc")
+else(WITH_MAPNIK)
   target_compile_definitions(tilelite PRIVATE TC_NO_MAPNIK=1)
-endif (NOT WITH_MAPNIK)
+endif (WITH_MAPNIK)
 
 add_executable(tests
   poly_hit_test.c
@@ -60,7 +62,7 @@ target_link_libraries(tests
 target_link_libraries(
   tilelite
   ${MAPNIK_LIBRARY}
-  icuuc
+  ${ICU_LIB}
   libh2o-evloop
   ${CMAKE_THREAD_LIBS_INIT}
   ${CMAKE_DL_LIBS}

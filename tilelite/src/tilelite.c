@@ -291,7 +291,7 @@ static int start_prerender(h2o_handler_t* h, h2o_req_t* req) {
   int32_t max_zoom = (int32_t)json_object_get_number(req_json, "maxZoom");
   int32_t tile_size = (int32_t)json_object_get_number(req_json, "tileSize");
 
-  if (tile_size != 256 || tile_size != 512) {
+  if (tile_size != 256 && tile_size != 512) {
     tile_size = 256;
   }
 

@@ -1,14 +1,38 @@
 import React from "react";
 import ReactDOM from "react-dom";
 import ol from "openlayers";
-import PrerenderJob from "./PrerenderJob.js";
-import ButtonGroup from "./ButtonGroup.js";
-import { startPrerender, loadPrerenderStatus } from "./API.js";
+import PrerenderJob from "./PrerenderJob.jsx";
+import { startPrerender, loadPrerenderStatus } from "../API.js";
+import { List, Sidebar, Segment, Button, Form, Header, Message, Container } from "semantic-ui-react";
 
-const ControlPanel = React.createClass({
+function isEmpty(v) {
+  return v == undefined || v == null;
+}
 
-  getInitialState: function() {
-    return {
+const RenderList = (props) => {
+  let {jobs, activeJobId, jobClicked} = props;
+  let jobList = jobs.map((j, i) => {
+    let selected = activeJobId == j.id;
+    return (
+      <PrerenderJob job={j} key={i}
+        selected={selected}
+        onClick={() => jobClicked(j)}
+      />
+    );
+  });
+  return (
+    <List selection>
+      {jobList}
+    </List>
+  );
+};
+
+export default class App extends React.Component {
+
+  constructor(props, ctx) {
+    super(props, ctx);
+
+    this.state = {
       zoom: 4,
       minZoom: 0,
       maxZoom: 14,
@@ -16,37 +40,38 @@ const ControlPanel = React.createClass({
       tileSize512: false,
       prerenderJobs: [],
       selectedJobId: -1,
-      activeRenderSourceIndex: 0
-    }
-  },
+      tileMode: "osm"
+    };
+  }
 
-  minZoomChanged: function(evt) {
+  minZoomChanged(evt) {
     const v = evt.target.value | 0;
     this.setState({
       minZoom: Math.min(this.state.maxZoom, Math.max(0, v))
     });
-  },
+  }
 
-  maxZoomChanged: function(evt) {
+  maxZoomChanged(evt) {
     const v = evt.target.value | 0;
     this.setState({
       maxZoom: Math.min(18, Math.max(this.state.minZoom, v))
     });
-  },
+  }
 
-  tile256Checked: function(evt) {
+  tile256Checked() {
     this.setState({
       tileSize256: !this.state.tileSize256
     });
-  },
+  }
 
-  tile512Checked: function(evt) {
+  tile512Checked() {
     this.setState({
       tileSize512: !this.state.tileSize512
     });
-  },
+  }
 
-  submitPrerender: function() {
+  submitPrerender(e) {
+    e.preventDefault();
     const that = this;
 
     if (!this.state.tileSize256 && !this.state.tileSize512) {
@@ -97,19 +122,20 @@ const ControlPanel = React.createClass({
     this.setState({
       error: null
     });
-  },
+  }
 
-  updatePrerenderStatus: function(s) {
+  updatePrerenderStatus(s) {
     this.setState({
-      prerenderJobs: s.renders
+      prerenderJobs: s.renders || []
     });
-  },
+  }
 
-  updateStatus: function() {
-    loadPrerenderStatus(this.updatePrerenderStatus, (err) => console.log(err));
-  },
+  updateStatus() {
+    let onFinish = this.updatePrerenderStatus.bind(this);
+    loadPrerenderStatus(onFinish, (err) => console.log(err));
+  }
 
-  componentDidMount: function() {
+  componentDidMount() {
     const that = this;
 
     this.cachedSource = new ol.source.XYZ({
@@ -189,23 +215,11 @@ const ControlPanel = React.createClass({
       }
     };
 
-    this.refreshStatusId = setInterval(this.updateStatus, 2000);
+    this.refreshStatusId = setInterval(this.updateStatus.bind(this), 2000);
     this.updateStatus();
-  },
+  }
 
-  renderError: function() {
-    if (this.state.error) {
-      return (
-        <div className="alert alert-danger" role="alert">
-          {this.state.error}
-        </div>
-      );
-    }
-
-    return null;
-  },
-
-  jobClicked: function(job) {
+  jobClicked(job) {
 		this.vectorSource.clear();
     if (job.id == this.state.selectedJobId) {
       this.setState({
@@ -234,15 +248,15 @@ const ControlPanel = React.createClass({
         selectedJobId: job.id
       });
     }
-  },
+  }
 
-  tileSourceSelected: function(btn, idx) {
+  setTileMode(mode) {
     const map = this.map;
     const layers = [this.osmLayer, this.vectorLayer, this.cachedLayer];
 
     layers.forEach(l => map.removeLayer(l));
 
-    if (idx == 0) {
+    if (mode == "osm") {
       map.addLayer(this.osmLayer);
       map.addLayer(this.vectorLayer);
       
@@ -258,133 +272,74 @@ const ControlPanel = React.createClass({
     }
 
     this.setState({
-      activeRenderSourceIndex: idx
+      tileMode: mode
     });
-  },
+  }
 
-  renderJobList: function() {
-    const that = this;
-    const activeJobId = this.state.selectedJobId;
-    const jobs = this.state.prerenderJobs.map(j =>
-      <PrerenderJob
-        key={j.id}
-        selected={activeJobId == j.id}
-        job={j}
-        onClick={() => that.jobClicked(j)}
-      />
-    );
-
-    const filler = <div style={{marginTop: "10px"}}>No active render jobs.</div>;
-    const content = jobs.length == 0 ? filler : jobs;
-
-    const outerStyle = {
-      margin: "12px 2px 2px 2px",
-      padding: "2px", 
-      width: "100%"
-    };
-
-    const listStyle = {
-      textAlign: "center",
-      width: "100%"
-    };
+  render() {
+    let that = this;
+    let state = this.state;
 
     return (
-      <div style={outerStyle}>
-        <div style={{textAlign: "center", width: "100%", fontWeight: "bold"}}>
-          Active render jobs
-        </div>
-        <div className="list-group" style={listStyle}>
-          {content}
-        </div>
-      </div>
-    );
-  },
-  
-  render: function() {
-
-    const tileSourceButtons = [
-      {name: "Online tiles"},
-      {name: "Cached tiles"}
-    ];
-
-    return (
-      <div className="row" style={{padding: "10px 0 10px 0"}}>
-        <div className="col-md-4 col-xl-2">
-          <div style={{"width":"100%"}}>
-            <ButtonGroup buttons={tileSourceButtons}
-              selectedIndex={this.state.activeRenderSourceIndex}
-              onClick={this.tileSourceSelected}
+      <Sidebar.Pushable as={Segment} style={{height: "100%", width: "100%"}}>
+        <Sidebar as={Segment} visible={true} width={"very wide"} padded={true}>
+          <Button.Group fluid>
+            <Button positive={state.tileMode == "osm"}
+              onClick={() => that.setTileMode("osm")}>
+              Online tiles
+            </Button>
+            <Button.Or />
+            <Button positive={state.tileMode == "cached"}
+              onClick={() => that.setTileMode("cached")}>
+              Cached tiles
+            </Button>
+          </Button.Group> 
+          <Header size="tiny">Current zoom {state.zoom.toFixed(1)}</Header>
+          <Form onSubmit={this.submitPrerender.bind(this)} error={!isEmpty(state.error)}>
+            <Form.Field>
+              <label>Min zoom</label>
+              <input type="number"
+                value={state.minZoom}
+                onChange={this.minZoomChanged.bind(this)}
+              />
+            </Form.Field>
+            <Form.Field>
+              <label>Max zoom</label>
+              <input type="number"
+                value={state.maxZoom}
+                onChange={this.maxZoomChanged.bind(this)}
+              />
+            </Form.Field>
+            <Form.Group inline>
+              <label>Size</label>
+              <Form.Checkbox label="256x256"
+                checked={state.tileSize256}
+                onChange={this.tile256Checked.bind(this)}
+              />
+              <Form.Checkbox label="512x512"
+                checked={state.tileSize512}
+                onChange={this.tile512Checked.bind(this)}
+              />
+            </Form.Group>
+            <Message error content={state.error} />
+            <Form.Button>
+              Start
+            </Form.Button>
+          </Form>
+          <Segment>
+            <Header textAlign="center" size="tiny">Ongoing jobs</Header>
+            <RenderList jobs={state.prerenderJobs}
+              activeJobId={state.selectedJobId}
+              jobClicked={this.jobClicked.bind(this)}
             />
+          </Segment>
+        </Sidebar>
+        <Sidebar.Pusher as={Segment} padded={false} style={{padding: "0", width: "100%", height: "100%"}}>
+          <div id="map" className="map" style={{height: "100%"}}>
           </div>
-          <form>
-            <div className="row">
-              <label className="col-md-6 col-form-label">Zoom</label>
-              <label className="col-md-6 col-form-label">
-                {this.state.zoom}
-              </label>
-            </div>
-            <div className="form-group row">
-              <label className="col-md-6 col-form-label">Min zoom</label>
-              <div className="col-md-6">
-                <input
-                  className="form-control"
-                  type="number"
-                  value={this.state.minZoom}
-                  onChange={this.minZoomChanged}
-                />
-              </div>
-            </div>
-            <div className="form-group row">
-              <label className="col-md-6 col-form-label">Max zoom</label>
-              <div className="col-md-6">
-                <input
-                  className="form-control"
-                  type="number"
-                  value={this.state.maxZoom}
-                  onChange={this.maxZoomChanged}
-                />
-              </div>
-            </div>
-            <div className="form-check">
-              <label className="form-check-label">
-                <input
-                  className="form-check-input"
-                  type="checkbox"
-                  checked={this.state.tileSize256}
-                  onChange={this.tile256Checked}
-                />
-                256x256
-              </label>
-            </div>
-            <div className="form-check">
-              <label className="form-check-label">
-                <input
-                  className="form-check-input"
-                  type="checkbox"
-                  checked={this.state.tileSize512}
-                  onChange={this.tile512Checked}
-                />
-                512x512
-              </label>
-            </div>
-            <button
-              type="button"
-              onClick={this.submitPrerender}
-              className="btn btn-primary">
-                Start
-            </button>
-          </form>
-          {this.renderError()}
-          {this.renderJobList()}
-        </div>
-        <div className="col-md-8 col-xl-10">
-          <div id="map" className="map">
-          </div>
-        </div>
-      </div>
+        </Sidebar.Pusher>
+      </Sidebar.Pushable>
     );
   }
 
-});
-
-ReactDOM.render(<ControlPanel />, document.getElementById("root"));
+}

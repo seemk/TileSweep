@@ -147,8 +147,8 @@ static void* render_tile_background(void* arg,
 
   image_db* db = &shared->db_conns[thread_idx];
   if (image_db_exists(db, tile_hash(&args->t))) {
-    tl_log("background render; tile [%d, %d, %d] exists", args->t.x, args->t.y,
-           args->t.z);
+    tl_log("background render; tile [%d, %d, %d] [%d, %d] exists", args->t.x,
+           args->t.y, args->t.z, args->t.w, args->t.h);
     goto bg_render_finish;
   }
 
@@ -159,12 +159,12 @@ static void* render_tile_background(void* arg,
   if (success) {
     const uint64_t image_hash = XXH64(args->img.data, args->img.len, 0);
     tl_write_queue_push(shared->write_queue, args->t, args->img, image_hash);
-    tl_log("background render; tile [%d, %d, %d] done", args->t.x, args->t.y,
-           args->t.z);
+    tl_log("background render; tile [%d, %d, %d] [%d, %d] done", args->t.x,
+           args->t.y, args->t.z, args->t.w, args->t.h);
   } else {
     // TODO: Count failed tiles
-    tl_log("background render; tile [%d, %d, %d] fail", args->t.x, args->t.y,
-           args->t.z);
+    tl_log("background render; tile [%d, %d, %d] [%d, %d] fail", args->t.x,
+           args->t.y, args->t.z, args->t.w, args->t.h);
     if (args->img.data) {
       free(args->img.data);
     }
@@ -440,8 +440,8 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
     tl_log("[%d, %d, %d, %d, %d] (%d bytes) | %.2f ms [cache: %d]", t.w, t.h,
            t.z, t.x, t.y, img.len, req_time / 1000.0, existing);
   } else {
-    tl_log("[%d, %d, %d, %d, %d] (%d bytes) | %" PRId64 " us [cache: %d]", t.w, t.h,
-           t.z, t.x, t.y, img.len, req_time, existing);
+    tl_log("[%d, %d, %d, %d, %d] (%d bytes) | %" PRId64 " us [cache: %d]", t.w,
+           t.h, t.z, t.x, t.y, img.len, req_time, existing);
   }
 
   return 0;

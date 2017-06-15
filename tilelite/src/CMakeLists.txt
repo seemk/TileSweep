@@ -43,6 +43,7 @@ else(WITH_MAPNIK)
   target_compile_definitions(tilelite PRIVATE TC_NO_MAPNIK=1)
 endif (WITH_MAPNIK)
 
+if (BUILD_TESTS)
 add_executable(tests
   poly_hit_test.c
   poly_fill.c
@@ -52,12 +53,14 @@ add_executable(tests
   query.c
 )
 
-ADD_DEPENDENCIES(tilelite libh2o libh2o-evloop)
 ADD_DEPENDENCIES(tests libh2o libh2o-evloop)
 
 target_link_libraries(tests
   m
 )
+endif(BUILD_TESTS)
+
+ADD_DEPENDENCIES(tilelite libh2o libh2o-evloop)
 
 target_link_libraries(
   tilelite
@@ -69,4 +72,7 @@ target_link_libraries(
   m
 )
 
-file(COPY "${CMAKE_SOURCE_DIR}/../ui" DESTINATION "${CMAKE_BINARY_DIR}")
+file(COPY "${CMAKE_SOURCE_DIR}/ui" DESTINATION "${ARTIFACT_DIR}")
+add_custom_command(TARGET tilelite POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/conf/conf.ini ${ARTIFACT_DIR}
+)

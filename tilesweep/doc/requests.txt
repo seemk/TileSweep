@@ -1,0 +1,12 @@
+POST /prerender
+
+{
+  "coordinates" : [
+    [x, y],
+    [x, y],
+    ...
+  ],
+  "minZoom" : 2,
+  "maxZoom": 3,
+  "tileSize": 256
+}

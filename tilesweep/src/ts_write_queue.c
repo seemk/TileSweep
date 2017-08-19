@@ -10,6 +10,7 @@ struct ts_write_queue {
   int32_t full_threshold;
   int32_t insert_threshold;
   int32_t inserts_len;
+  int32_t force_commit;
   image_db_insert* inserts;
   pthread_t write_thread;
   pthread_mutex_t lock;
@@ -57,8 +58,9 @@ static void* commit_pending(void* arg) {
       clear_pending_inserts(q);
 
       ts_log("write queue clear done, status = %d", res);
-    } else if (queued >= q->insert_threshold) {
+    } else if (queued >= q->insert_threshold || q->force_commit) {
       populate_pending_inserts(q, queued);
+      q->force_commit = 0;
       pthread_mutex_unlock(&q->lock);
       ts_log("begin batch insert");
       int32_t res = image_db_insert_batch(q->db, q->inserts, q->inserts_len);
@@ -101,4 +103,11 @@ void ts_write_queue_push(ts_write_queue* q, ts_tile tile, image img,
 void ts_write_queue_destroy(ts_write_queue* q) {
   free(q->inserts);
   free(q);
+}
+
+void ts_write_queue_commit(ts_write_queue* q) {
+  pthread_mutex_lock(&q->lock);
+  q->force_commit = 1;
+  pthread_mutex_unlock(&q->lock);
+  ts_sema_post(&q->sema, 1);
 }

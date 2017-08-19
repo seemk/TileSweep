@@ -176,6 +176,7 @@ bg_render_finish:
           atomic_load(&stats->num_tilecoords)) {
     tilesweep_stats_remove_prerender(shared->stats, stats);
     prerender_job_stats_destroy(stats);
+    ts_write_queue_commit(shared->write_queue);
   }
 
   free(args);

@@ -15,3 +15,4 @@ ts_write_queue* ts_write_queue_create(image_db* db);
 void ts_write_queue_push(ts_write_queue* q, ts_tile t, image img,
                          uint64_t image_hash);
 void ts_write_queue_destroy(ts_write_queue* q);
+void ts_write_queue_commit(ts_write_queue* q);

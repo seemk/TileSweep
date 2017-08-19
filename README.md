@@ -27,12 +27,12 @@ The tile URL is http://localhost:8080/tile/X/Y/Z/256/256 (or /512/512).
 
 ## Configuration
 ```
-plugins=/usr/local/lib/mapnik/input/ ; Mapnik plugins directory, requires postgis plugin
+plugins=/usr/lib/mapnik/3.0/input/ ; Mapnik plugins directory, requires postgis plugin
 fonts=/usr/share/fonts
 host=127.0.0.1
 port=8080
 tile_db=tiles.db
-mapnik_xml=openstreetmap-carto/mapnik.xml ; Path to Mapnik's XML stylesheet
+mapnik_xml=/path/to/openstreetmap-carto/mapnik.xml ; Path to Mapnik's XML stylesheet
 rendering=1 ; 1 = Use mapnik, 0 = serve cached tiles
 ```
 ## Fresh installation

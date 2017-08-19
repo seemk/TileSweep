@@ -1,4 +1,4 @@
-# TileLite
+# TileSweep
 
 An OpenStreetMap tile server.
 
@@ -18,7 +18,7 @@ $ make
 ```
 ## Usage
 ```
-$ ./bin/tilelite -c conf.ini
+$ ./bin/tilesweep -c conf.ini
 ```
 ## Configuration
 ```

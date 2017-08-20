@@ -56,7 +56,7 @@ static void* pool_task(void* arg) {
     if (get_task(info->pool, &t)) {
       assert(t);
 #ifdef DEBUG
-      int64_t start_time = tl_usec_now();
+      int64_t start_time = usec_now();
 #endif
       switch (t->type) {
         case TASK_FIREFORGET: {
@@ -73,8 +73,8 @@ static void* pool_task(void* arg) {
           break;
       }
 #ifdef DEBUG
-      tl_log("[pool-%d] task exec: %.3f ms", info->thread_num,
-             (tl_usec_now() - start_time) / 1000.0);
+      ts_log("[pool-%d] task exec: %.3f ms", info->thread_num,
+             (usec_now() - start_time) / 1000.0);
 #endif
     }
   }

@@ -41,6 +41,8 @@ static inline double sign(double x) {
   return 0.0;
 }
 
+static inline int log2pow2(int v) { return __builtin_ffs(v) - 1; }
+
 vec2d mercator_to_tile(double x, double y, int32_t zoom, int32_t tile_size);
 bounding_boxd tile_to_mercator(int32_t x, int32_t y, int32_t z,
                                int32_t tile_size);

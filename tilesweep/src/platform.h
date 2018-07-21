@@ -9,6 +9,7 @@ extern "C" {
 #endif
 
 int64_t usec_now();
+uint32_t seconds_now();
 
 #ifdef __cplusplus
 }

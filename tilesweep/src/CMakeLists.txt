@@ -23,9 +23,11 @@ add_executable(tilesweep
   tcp.c
   tile_renderer.cpp
   tilesweep.c
+  ts_cache.c
   ts_math.c
   ts_options.c
   ts_queue.c
+  ts_rng.c
   ts_sema.c
   ts_task.c
   ts_tile.c

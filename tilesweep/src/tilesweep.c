@@ -14,6 +14,7 @@
 #include "taskpool.h"
 #include "tcp.h"
 #include "tile_renderer.h"
+#include "ts_cache.h"
 #include "ts_math.h"
 #include "ts_options.h"
 #include "ts_tile.h"
@@ -51,6 +52,7 @@ typedef struct {
   tilesweep_shared_ctx* shared;
   int fd;
   pthread_t thread_id;
+  ts_cache* cache;
   image_db* tile_db;
   h2o_accept_ctx_t accept_ctx;
   h2o_socket_t* socket;
@@ -61,6 +63,8 @@ static struct {
   h2o_globalconf_t globalconf;
   ts_options* opt;
 } conf;
+
+static void cache_item_expired(const ts_cache_item* item) { free(item->user); }
 
 static void on_accept(h2o_socket_t* listener, const char* err) {
   if (err != NULL) {
@@ -79,6 +83,12 @@ static void on_accept(h2o_socket_t* listener, const char* err) {
 
 int32_t http_ctx_init(http_ctx* c) {
   const ts_options* opt = c->opt;
+
+  c->cache = ts_cache_create(
+      &(ts_cache_options){.max_mem = opt->cache_size_bytes,
+                          .lfu_log_factor = opt->cache_log_factor,
+                          .lfu_decay_time = opt->cache_decay_seconds,
+                          .on_item_expire = cache_item_expired});
   c->tile_db = image_db_open(opt->database);
 
   if (!c->tile_db) {
@@ -130,6 +140,25 @@ static void send_server_error(h2o_req_t* req) {
   req->res.status = 500;
   req->res.reason = "Internal Server Error";
   h2o_send(req, &req->entity, 1, 1);
+}
+
+static void send_image_response(h2o_req_t* req, const image* img) {
+  req->res.status = 200;
+  req->res.reason = "OK";
+
+  h2o_add_header(&req->pool, &req->res.headers, H2O_TOKEN_CONTENT_TYPE,
+                 H2O_STRLIT("image/png"));
+
+  char content_length[8];
+  snprintf(content_length, 8, "%d", img->len);
+  size_t header_length = strlen(content_length);
+  h2o_add_header(&req->pool, &req->res.headers, H2O_TOKEN_CONTENT_LENGTH,
+                 content_length, header_length);
+
+  h2o_iovec_t body;
+  body.base = (char*)img->data;
+  body.len = img->len;
+  h2o_send(req, &body, 1, 1);
 }
 
 typedef struct {
@@ -354,6 +383,7 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
 
   ts_h2o_ctx* h2o = (ts_h2o_ctx*)req->conn->ctx;
   http_ctx* c = (http_ctx*)h2o->user;
+  ts_cache* cache = c->cache;
   tilesweep_shared_ctx* shared = c->shared;
   h2o_generator_t gen = {NULL, NULL};
   ts_tile t = parse_tile(req->path.base, req->path.len);
@@ -383,9 +413,45 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
   const uint64_t pos_hash = tile_hash(&t);
   image img = {0};
 
+  // Use the upper 16 bits to store log2(dimension), assumes w, h are pow2
+  uint64_t base = (uint64_t)log2pow2(t.w);
+  uint64_t mem_cache_key = (base << 48) | pos_hash;
+
+  ts_cache_item cache_item;
+  if (ts_cache_get(cache, mem_cache_key, &cache_item)) {
+    img.width = t.w;
+    img.height = t.h;
+    img.len = cache_item.size;
+    img.data = (uint8_t*)cache_item.user;
+
+    send_image_response(req, &img);
+
+    ts_log("[%d, %d, %d, %d, %d] (%d bytes) | %.3f ms [cache: memory]", t.w,
+           t.h, t.z, t.x, t.y, img.len, (double)(usec_now() - req_start) / 1e3);
+
+    return 0;
+  }
+
+  if (image_db_fetch(c->tile_db, pos_hash, t.w, t.h, &img)) {
+    send_image_response(req, &img);
+
+    cache_item.key = mem_cache_key;
+    cache_item.size = img.len;
+    cache_item.user = img.data;
+
+    if (!ts_cache_set(cache, &cache_item)) {
+      free(img.data);
+    }
+
+    ts_log("[%d, %d, %d, %d, %d] (%d bytes) | %.3f ms [cache: disk]", t.w, t.h,
+           t.z, t.x, t.y, img.len, (double)(usec_now() - req_start) / 1e3);
+
+    return 0;
+  }
+
   tilesweep_result result = res_ok;
-  int32_t existing = image_db_fetch(c->tile_db, pos_hash, t.w, t.h, &img);
-  if (!force_cache && !existing && shared->rendering_enabled) {
+
+  if (!force_cache && shared->rendering_enabled) {
     tile_render_task renderer_info = {
         .tile = t, .img = img, .shared = shared, .success = 0};
 
@@ -410,23 +476,12 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
   }
 
   if (img.len > 0) {
-    req->res.status = 200;
-    req->res.reason = "OK";
-
-    h2o_add_header(&req->pool, &req->res.headers, H2O_TOKEN_CONTENT_TYPE,
-                   H2O_STRLIT("image/png"));
-
-    char content_length[8];
-    snprintf(content_length, 8, "%d", img.len);
-    size_t header_length = strlen(content_length);
-    h2o_add_header(&req->pool, &req->res.headers, H2O_TOKEN_CONTENT_LENGTH,
-                   content_length, header_length);
-
-    h2o_iovec_t body;
-    body.base = (char*)img.data;
-    body.len = img.len;
-    h2o_send(req, &body, 1, 1);
+    send_image_response(req, &img);
     free(img.data);
+
+    ts_log("[%d, %d, %d, %d, %d] (%d bytes) | %.2f ms [rendered]", t.w, t.h,
+           t.z, t.x, t.y, img.len, (usec_now() - req_start) / 1000.0);
+
   } else {
     if (result == res_failure) {
       req->res.status = 500;
@@ -436,15 +491,6 @@ static int serve_tile(h2o_handler_t* h, h2o_req_t* req) {
       req->res.reason = "No Content";
     }
     h2o_send(req, &req->entity, 1, 1);
-  }
-
-  int64_t req_time = usec_now() - req_start;
-  if (req_time > 1000) {
-    ts_log("[%d, %d, %d, %d, %d] (%d bytes) | %.2f ms [cache: %d]", t.w, t.h,
-           t.z, t.x, t.y, img.len, req_time / 1000.0, existing);
-  } else {
-    ts_log("[%d, %d, %d, %d, %d] (%d bytes) | %" PRId64 " us [cache: %d]", t.w,
-           t.h, t.z, t.x, t.y, img.len, req_time, existing);
   }
 
   return 0;
@@ -458,8 +504,12 @@ void* run_loop(void* arg) {
     return NULL;
   }
 
-  ts_log("http [%d] ready", c->http_thread_idx);
-  while (h2o_evloop_run(c->ctx.super.loop, INT32_MAX) == 0) {
+  ts_log("http [%d] ready [cache %.3f MB]", c->http_thread_idx,
+         (double)c->opt->cache_size_bytes / 1e6);
+
+  while (h2o_evloop_run(c->ctx.super.loop, 100) == 0) {
+    uint32_t time = usec_now() / UINT64_C(1000000);
+    ts_cache_update(c->cache, time);
   }
 
   return NULL;

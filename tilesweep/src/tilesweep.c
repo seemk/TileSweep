@@ -81,6 +81,10 @@ int32_t http_ctx_init(http_ctx* c) {
   const ts_options* opt = c->opt;
   c->tile_db = image_db_open(opt->database);
 
+  if (!c->tile_db) {
+    return 0;
+  }
+
   h2o_context_init(&c->ctx.super, h2o_evloop_create(), &conf.globalconf);
   c->ctx.user = c;
   c->accept_ctx.ctx = &c->ctx.super;

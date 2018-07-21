@@ -19,6 +19,7 @@ int32_t image_db_init(image_db* db, const char* db_file) {
   int res = sqlite3_open(db_file, &sqlite_db);
 
   if (res != SQLITE_OK) {
+    ts_log("failed to open tile db: %s", sqlite3_errmsg(sqlite_db));
     return 0;
   }
 

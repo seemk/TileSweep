@@ -626,7 +626,7 @@ int main(int argc, char** argv) {
 #if TC_NO_MAPNIK
   shared->rendering_enabled = 0;
 #else
-  shared->rendering_enabled = strcmp(opt.rendering, "1") == 0;
+  shared->rendering_enabled = opt.rendering_enabled;
 #endif
   shared->num_task_threads = cpu_core_count();
   shared->num_http_threads = shared->num_task_threads;
@@ -664,6 +664,15 @@ int main(int argc, char** argv) {
 
     for (int32_t i = 0; i < shared->num_task_threads; i++) {
       ts_task_destroy(startup_tasks[i]);
+    }
+
+    for (int32_t i = 0; i < shared->num_task_threads; i++) {
+      if (!shared->renderers[i]) {
+        ts_log(
+            "mapnik renderer setup failed - disable rendering or check your "
+            "mapnik configuration (mapnik.xml). exiting");
+        return 1;
+      }
     }
   }
 

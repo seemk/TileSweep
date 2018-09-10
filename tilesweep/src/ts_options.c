@@ -28,7 +28,8 @@ static const ts_options default_opt = {.plugins = "/usr/local/lib/mapnik/input",
                                        .mapnik_xml = "osm.xml",
                                        .cache_size = "10M",
                                        .cache_log_factor_str = "10.0",
-                                       .cache_decay_seconds_str = "120"};
+                                       .cache_decay_seconds_str = "120",
+                                       .rendering_enabled = 0};
 
 static int64_t parse_cache_size(const char* cache_string) {
   if (!cache_string) {
@@ -138,6 +139,9 @@ ts_options ts_options_parse(int argc, char** argv) {
   opt.cache_size_bytes = parse_cache_size(opt.cache_size);
   opt.cache_log_factor = atof(opt.cache_log_factor_str);
   opt.cache_decay_seconds = atoi(opt.cache_decay_seconds_str);
+  opt.rendering_enabled = strcmp(opt.rendering, "1") == 0;
+
+  ts_log("rendering %s", opt.rendering_enabled ? "enabled" : "disabled");
 
   return opt;
 }

@@ -16,6 +16,7 @@ typedef struct {
   uint64_t cache_size_bytes;
   double cache_log_factor;
   uint32_t cache_decay_seconds;
+  int32_t rendering_enabled;
 } ts_options;
 
 ts_options ts_options_parse(int argc, char** argv);

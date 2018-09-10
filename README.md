@@ -10,6 +10,7 @@ Features:
 ## Building
 Requirements:
 * libmapnik (>= 3.0.12)
+* libwslay
 
 ```
 $ mkdir build && cd build
